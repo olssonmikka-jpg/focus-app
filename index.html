@@ -9,6 +9,9 @@
 <link rel="manifest" href="./manifest.json">
 <link rel="apple-touch-icon" href="./icon-192.png">
 <title>Daily Focus</title>
+<script defer src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js"></script>
+<script defer src="https://www.gstatic.com/firebasejs/10.14.1/firebase-auth-compat.js"></script>
+<script defer src="https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore-compat.js"></script>
 <style>
   :root{
     --paper:#FAFAF8; --ink:#141414; --gray:#8a8a86; --hair:#e3e3df;
@@ -241,6 +244,10 @@
         <button class="closebtn" id="closeDay">Close the Day</button>
         <div class="closenote">Clears what's done, rolls open items to tomorrow with a carry dot (&#9679;), bumps your streak. Two dots = kill it or make it first.</div>
         <button class="resetlink" id="resetAll">Reset everything</button>
+        <div id="syncRow" style="margin-top:22px;text-align:center">
+          <div id="syncStatus" style="font-size:12px;color:var(--gray);margin-bottom:6px">Not synced</div>
+          <button class="resetlink" id="syncBtn">Set up sync</button>
+        </div>
       </div>
     </div>
   </section>
@@ -312,6 +319,7 @@
     saveTimer = setTimeout(() => {
       try{ localStorage.setItem(KEY, JSON.stringify(state)); }
       catch(e){ /* best effort */ }
+      pushSync();
     }, 250);
   }
 
@@ -633,7 +641,106 @@
     BLOCKS.forEach(b => state.blocks[b] = []);
     renderAll();
     if(!memoryOnly){ try{ localStorage.setItem(KEY, JSON.stringify(state)); }catch(e){} }
+    pushSync();
     toast("Fresh start");
+  });
+
+  /* ---------- cloud sync (Firebase, optional) ----------
+     To enable: create a free Firebase project (console.firebase.google.com),
+     enable Anonymous auth + Firestore, register a Web app, and paste its
+     config below in place of the empty object. See setup notes in repo. */
+  const FIREBASE_CONFIG = {};
+  const SYNC_KEY = "focus-sync-code";
+  let fbReady = null, fbUnsub = null, lastPulledAt = 0;
+
+  function syncCode(){ return localStorage.getItem(SYNC_KEY) || ""; }
+  function setSyncStatus(text){ const el = document.getElementById("syncStatus"); if(el) el.textContent = text; }
+  async function hashCode(code){
+    const buf = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(code.trim().toLowerCase()));
+    return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2,"0")).join("");
+  }
+  function docRef(hash){ return firebase.firestore().collection("focusSync").doc(hash); }
+
+  async function ensureFirebase(){
+    if(fbReady) return fbReady;
+    if(!FIREBASE_CONFIG.apiKey || typeof firebase === "undefined"){ return null; }
+    fbReady = (async () => {
+      firebase.initializeApp(FIREBASE_CONFIG);
+      await firebase.auth().signInAnonymously();
+      return true;
+    })().catch(() => null);
+    return fbReady;
+  }
+
+  async function pushSync(){
+    const code = syncCode();
+    if(!code) return;
+    const ok = await ensureFirebase();
+    if(!ok) return;
+    try{
+      const hash = await hashCode(code);
+      state.updatedAt = Date.now();
+      lastPulledAt = state.updatedAt;
+      await docRef(hash).set({ state, updatedAt: state.updatedAt });
+      setSyncStatus("Synced ✓ — code: "+code);
+    }catch(e){ setSyncStatus("Sync error — tap to retry"); }
+  }
+
+  async function startSync(code, {silent} = {}){
+    localStorage.setItem(SYNC_KEY, code);
+    setSyncStatus("Connecting…");
+    const ok = await ensureFirebase();
+    if(!ok){ setSyncStatus("Sync not set up yet — see setup notes"); return; }
+    try{
+      const hash = await hashCode(code);
+      const ref = docRef(hash);
+      const snap = await ref.get();
+      if(snap.exists){
+        const remote = snap.data();
+        const remoteAt = remote.updatedAt || 0;
+        if(remoteAt >= (state.updatedAt||0)){
+          state = Object.assign(state, remote.state, {updatedAt: remoteAt});
+          lastPulledAt = remoteAt;
+          save(); renderAll();
+          if(!silent) toast("Pulled data from your other device");
+        }else{
+          await ref.set({state, updatedAt: state.updatedAt||Date.now()});
+        }
+      }else{
+        await ref.set({state, updatedAt: state.updatedAt||Date.now()});
+      }
+      if(fbUnsub) fbUnsub();
+      fbUnsub = ref.onSnapshot(doc => {
+        if(!doc.exists) return;
+        const data = doc.data();
+        if(data.updatedAt && data.updatedAt > lastPulledAt + 500){
+          lastPulledAt = data.updatedAt;
+          state = Object.assign(state, data.state, {updatedAt: data.updatedAt});
+          save(); renderAll();
+          toast("Synced from other device");
+        }
+      });
+      setSyncStatus("Synced ✓ — code: "+code);
+    }catch(e){ setSyncStatus("Sync error — tap to retry"); }
+  }
+
+  document.getElementById("syncBtn").addEventListener("click", () => {
+    const current = syncCode();
+    const val = prompt(
+      current
+        ? "Sync code (enter the same code on your other device). Leave blank to turn off sync:"
+        : "Create a sync code, then enter this exact same code on your other device to link them:",
+      current
+    );
+    if(val === null) return;
+    if(!val.trim()){
+      localStorage.removeItem(SYNC_KEY);
+      if(fbUnsub){ fbUnsub(); fbUnsub = null; }
+      setSyncStatus("Not synced");
+      toast("Sync turned off");
+      return;
+    }
+    startSync(val.trim());
   });
 
   /* ---------- navigation ---------- */
@@ -666,14 +773,16 @@
       save();
     }
     renderAll();
+    if(syncCode()) setSyncStatus("Reconnecting…");
   });
 
-  /* ---------- offline: service worker ---------- */
-  if("serviceWorker" in navigator){
-    window.addEventListener("load", () => {
+  /* ---------- offline: service worker + sync reconnect ---------- */
+  window.addEventListener("load", () => {
+    if("serviceWorker" in navigator){
       navigator.serviceWorker.register("./sw.js").catch(()=>{});
-    });
-  }
+    }
+    if(syncCode()) startSync(syncCode(), {silent:true});
+  });
 })();
 </script>
 </body>
