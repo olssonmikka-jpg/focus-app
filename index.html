@@ -1,0 +1,679 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="theme-color" content="#141414">
+<link rel="manifest" href="./manifest.json">
+<link rel="apple-touch-icon" href="./icon-192.png">
+<title>Daily Focus</title>
+<style>
+  :root{
+    --paper:#FAFAF8; --ink:#141414; --gray:#8a8a86; --hair:#e3e3df;
+    --faint:#f0f0ec; --done:#b9b9b4;
+  }
+  *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+  html,body{height:100%;overflow:hidden;overscroll-behavior:none}
+  body{
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    background:var(--paper);color:var(--ink);
+  }
+  #deck{
+    display:flex;height:100dvh;width:100vw;
+    overflow-x:auto;overflow-y:hidden;
+    scroll-snap-type:x mandatory;scroll-behavior:smooth;
+    scrollbar-width:none;
+  }
+  #deck::-webkit-scrollbar{display:none}
+  .page{
+    flex:0 0 100vw;height:100dvh;scroll-snap-align:start;scroll-snap-stop:always;
+    display:flex;flex-direction:column;
+    padding:calc(env(safe-area-inset-top,0px) + 18px) 22px calc(env(safe-area-inset-bottom,0px) + 72px);
+  }
+  .phead{flex:0 0 auto;padding-bottom:10px;border-bottom:2px solid var(--ink);margin-bottom:6px}
+  .eyebrow{font-size:10px;font-weight:700;letter-spacing:.18em;color:var(--gray);text-transform:uppercase}
+  .ptitle{font-size:26px;font-weight:800;letter-spacing:-.02em;line-height:1.1;margin-top:2px;display:flex;align-items:baseline;justify-content:space-between}
+  .streak{font-size:11px;font-weight:700;color:var(--gray);letter-spacing:.06em;white-space:nowrap}
+  .streak b{color:var(--ink);font-size:14px}
+  .body{flex:1 1 auto;overflow-y:auto;overscroll-behavior:contain;padding-top:8px;scrollbar-width:none}
+  .body::-webkit-scrollbar{display:none}
+  .sec{margin-bottom:18px}
+  .sechead{display:flex;align-items:center;justify-content:space-between;padding-bottom:5px;border-bottom:1.5px solid var(--ink);margin-bottom:2px}
+  .seclabel{font-size:11.5px;font-weight:800;letter-spacing:.14em;text-transform:uppercase}
+  .seclabel span{margin-right:6px}
+  .addbtn,.editbtn{
+    border:none;background:none;color:var(--gray);font-size:17px;font-weight:600;
+    width:32px;height:28px;line-height:28px;text-align:center;cursor:pointer;
+  }
+  .addbtn:active,.editbtn:active{color:var(--ink)}
+  /* time blocks */
+  .block{margin-top:10px}
+  .blockhead{display:flex;align-items:center;justify-content:space-between;padding-bottom:3px;border-bottom:1px dashed var(--gray)}
+  .blocklabel{font-size:10px;font-weight:800;letter-spacing:.16em;color:var(--gray)}
+  .block .addbtn{width:28px;height:22px;line-height:22px;font-size:15px}
+  .block .empty{padding:8px 2px;font-size:12px}
+  .block .row{padding:9px 2px}
+  /* asset groups */
+  .group{margin-top:12px}
+  .grouphead{display:flex;align-items:center;justify-content:space-between;padding-bottom:3px;border-bottom:1px dashed var(--gray)}
+  .groupname{font-size:10px;font-weight:800;letter-spacing:.16em;color:var(--ink);text-transform:uppercase}
+  .grouphead > div{display:flex;align-items:center}
+  .group .addbtn{width:28px;height:22px;line-height:22px;font-size:15px}
+  .grouphead .delbtn{width:26px;height:22px;font-size:13px}
+  .group .empty{padding:8px 2px;font-size:12px}
+  .group .row{padding:9px 2px}
+  /* rows */
+  .row{
+    display:flex;align-items:center;gap:12px;
+    padding:11px 2px;border-bottom:1px solid var(--hair);
+    user-select:none;-webkit-user-select:none;cursor:pointer;
+  }
+  .box{
+    flex:0 0 auto;width:21px;height:21px;border:1.6px solid var(--ink);border-radius:3px;
+    display:flex;align-items:center;justify-content:center;transition:background .12s;
+  }
+  .box svg{width:13px;height:13px;stroke:var(--paper);stroke-width:3;fill:none;
+    stroke-dasharray:20;stroke-dashoffset:20;transition:stroke-dashoffset .18s ease-out}
+  .row.done .box{background:var(--ink)}
+  .row.done .box svg{stroke-dashoffset:0}
+  .rtext{flex:1 1 auto;font-size:15px;line-height:1.3;transition:color .15s}
+  .row.done .rtext{color:var(--done);text-decoration:line-through;text-decoration-thickness:1.5px}
+  .carry{flex:0 0 auto;font-size:9px;letter-spacing:2px;color:var(--gray)}
+  .delbtn{flex:0 0 auto;display:none;border:none;background:none;color:var(--gray);font-size:16px;width:30px;height:30px;cursor:pointer}
+  .editing .delbtn{display:block}
+  .editing .row{cursor:default}
+  .newinput{
+    display:none;width:100%;padding:10px 2px;font-size:15px;border:none;outline:none;
+    border-bottom:1.5px dashed var(--gray);background:transparent;color:var(--ink);font-family:inherit;
+  }
+  .newinput.show{display:block}
+  .empty{padding:14px 2px;font-size:13px;color:var(--gray);font-style:italic}
+  /* parking lot */
+  .lot{border:1.6px dashed var(--ink);border-radius:6px;padding:12px;margin-top:4px}
+  .lot .capture{display:flex;gap:8px}
+  .lot input{
+    flex:1;font-size:15px;padding:10px 12px;border:1.5px solid var(--hair);border-radius:5px;
+    background:#fff;outline:none;font-family:inherit;color:var(--ink);
+  }
+  .lot input:focus{border-color:var(--ink)}
+  .lot .capbtn{
+    flex:0 0 auto;background:var(--ink);color:var(--paper);border:none;border-radius:5px;
+    font-size:20px;font-weight:700;width:44px;cursor:pointer;
+  }
+  .lotrow{display:flex;align-items:center;gap:8px;padding:10px 2px;border-bottom:1px solid var(--hair);font-size:14.5px}
+  .lotrow .t{flex:1}
+  .lotrow .mv{border:1.2px solid var(--ink);background:none;border-radius:4px;font-size:11px;font-weight:700;
+    padding:4px 7px;cursor:pointer;color:var(--ink)}
+  .lotrow .rm{border:none;background:none;color:var(--gray);font-size:15px;width:26px;cursor:pointer}
+  .lothint{font-size:11px;color:var(--gray);font-style:italic;margin-top:8px}
+  /* day page */
+  .statgrid{display:flex;gap:10px;margin:14px 0}
+  .stat{flex:1;border:1.6px solid var(--ink);border-radius:6px;padding:12px 8px;text-align:center}
+  .stat .n{font-size:24px;font-weight:800}
+  .stat .l{font-size:9px;font-weight:700;letter-spacing:.14em;color:var(--gray);text-transform:uppercase;margin-top:2px}
+  .closebtn{
+    width:100%;margin-top:10px;background:var(--ink);color:var(--paper);border:none;border-radius:6px;
+    font-size:15px;font-weight:800;letter-spacing:.06em;padding:16px;cursor:pointer;text-transform:uppercase;
+  }
+  .closebtn:active{opacity:.85}
+  .closenote{font-size:11.5px;color:var(--gray);text-align:center;margin-top:10px;line-height:1.5}
+  .resetlink{display:block;text-align:center;margin-top:22px;font-size:11px;color:var(--gray);
+    background:none;border:none;text-decoration:underline;cursor:pointer;width:100%}
+  /* nav */
+  #nav{
+    position:fixed;left:0;right:0;bottom:0;display:flex;
+    background:var(--paper);border-top:1.5px solid var(--ink);
+    padding-bottom:env(safe-area-inset-bottom,0px);z-index:10;
+  }
+  #nav button{
+    flex:1;background:none;border:none;padding:12px 0 10px;cursor:pointer;
+    font-size:16px;font-weight:800;color:var(--gray);transition:color .12s;
+    display:flex;flex-direction:column;align-items:center;gap:2px;font-family:inherit;
+  }
+  #nav button small{font-size:8.5px;font-weight:700;letter-spacing:.12em;text-transform:uppercase}
+  #nav button.active{color:var(--ink)}
+  #toast{
+    position:fixed;left:50%;bottom:90px;transform:translateX(-50%) translateY(20px);
+    background:var(--ink);color:var(--paper);font-size:13px;font-weight:600;
+    padding:10px 18px;border-radius:20px;opacity:0;pointer-events:none;transition:all .25s;z-index:20;
+  }
+  #toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+  @media (prefers-reduced-motion:reduce){
+    #deck{scroll-behavior:auto}
+    .box svg{transition:none}
+  }
+</style>
+</head>
+<body>
+
+<div id="deck">
+  <!-- PAGE 1: TODAY -->
+  <section class="page" id="p0">
+    <div class="phead">
+      <div class="eyebrow" id="dateLabel"></div>
+      <div class="ptitle">Today <span class="streak">STREAK <b id="streak1">0</b>d</span></div>
+    </div>
+    <div class="body">
+      <div class="sec" id="cashSec">
+        <div class="sechead"><div class="seclabel"><span>$</span>Cash Flow Focus</div>
+          <div><button class="editbtn" id="cashEdit">&#9998;</button></div>
+        </div>
+        <div id="blocks"></div>
+      </div>
+      <div class="sec" data-sec="todos">
+        <div class="sechead"><div class="seclabel"><span>&#10003;</span>To-Dos</div>
+          <div><button class="editbtn" data-edit="todos">&#9998;</button><button class="addbtn" data-add="todos">+</button></div>
+        </div>
+        <input class="newinput" data-input="todos" placeholder="New to-do&hellip;" enterkeyhint="done">
+        <div class="list" data-list="todos"></div>
+      </div>
+      <div class="sec" data-sec="calls">
+        <div class="sechead"><div class="seclabel"><span>&#9742;</span>Calls</div>
+          <div><button class="editbtn" data-edit="calls">&#9998;</button><button class="addbtn" data-add="calls">+</button></div>
+        </div>
+        <input class="newinput" data-input="calls" placeholder="Who to call&hellip;" enterkeyhint="done">
+        <div class="list" data-list="calls"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- PAGE 2: BUILDING -->
+  <section class="page" id="p1">
+    <div class="phead">
+      <div class="eyebrow" id="dateLabel2"></div>
+      <div class="ptitle">Building <span class="streak">STREAK <b id="streak2">0</b>d</span></div>
+    </div>
+    <div class="body">
+      <div class="sec" id="assetSec">
+        <div class="sechead"><div class="seclabel"><span>&#9650;</span>Passive Asset Building</div>
+          <div><button class="editbtn" id="assetEdit">&#9998;</button><button class="addbtn" id="assetAddGroup">+</button></div>
+        </div>
+        <input class="newinput" id="assetGroupInput" placeholder="New header (e.g. Etsy plans)&hellip;" enterkeyhint="done">
+        <div id="assetGroups"></div>
+      </div>
+      <div class="sec" data-sec="ideas">
+        <div class="sechead"><div class="seclabel"><span>&#9998;</span>Ideas / Notes</div>
+          <div><button class="editbtn" data-edit="ideas">&#9998;</button><button class="addbtn" data-add="ideas">+</button></div>
+        </div>
+        <input class="newinput" data-input="ideas" placeholder="Plan idea, video idea&hellip;" enterkeyhint="done">
+        <div class="list" data-list="ideas"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- PAGE 3: PARKING LOT -->
+  <section class="page" id="p2">
+    <div class="phead">
+      <div class="eyebrow" id="dateLabel3"></div>
+      <div class="ptitle">Parking Lot <span class="streak">STREAK <b id="streak3">0</b>d</span></div>
+    </div>
+    <div class="body">
+      <div class="sec">
+        <div class="lot">
+          <div class="capture">
+            <input id="lotInput" placeholder="Interruption? Drop it here." enterkeyhint="done">
+            <button class="capbtn" id="lotAdd">+</button>
+          </div>
+          <div id="lotList"></div>
+          <div class="lothint">Land it. Back to work. Triage at end of day: &#10003; sends it to To-Dos, &#9742; to Calls.</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- PAGE 4: DAY -->
+  <section class="page" id="p3">
+    <div class="phead">
+      <div class="eyebrow" id="dateLabel4"></div>
+      <div class="ptitle">The Day <span class="streak">STREAK <b id="streak4">0</b>d</span></div>
+    </div>
+    <div class="body">
+      <div class="sec">
+        <div class="sechead"><div class="seclabel">Scoreboard</div></div>
+        <div class="statgrid">
+          <div class="stat"><div class="n" id="statDone">0</div><div class="l">Done</div></div>
+          <div class="stat"><div class="n" id="statOpen">0</div><div class="l">Open</div></div>
+          <div class="stat"><div class="n" id="statCarry">0</div><div class="l">Carried</div></div>
+        </div>
+        <button class="closebtn" id="closeDay">Close the Day</button>
+        <div class="closenote">Clears what's done, rolls open items to tomorrow with a carry dot (&#9679;), bumps your streak. Two dots = kill it or make it first.</div>
+        <button class="resetlink" id="resetAll">Reset everything</button>
+      </div>
+    </div>
+  </section>
+</div>
+
+<nav id="nav">
+  <button data-go="0" class="active">$<small>Today</small></button>
+  <button data-go="1">&#9650;<small>Building</small></button>
+  <button data-go="2">P<small>Lot</small></button>
+  <button data-go="3">&#9632;<small>Day</small></button>
+</nav>
+
+<div id="toast"></div>
+
+<script>
+(function(){
+  const BLOCKS = ["8\u201310","10\u201312","12\u20132","2\u20134","4\u20136"];
+  const SECTIONS = ["todos","ideas","calls"];
+  const KEY = "focus-app-state";
+  let state = {
+    streak: 0,
+    lastClosed: null,
+    blocks: {},
+    assetGroups: [],
+    items: { todos:[], ideas:[], calls:[] },
+    lot: []
+  };
+  BLOCKS.forEach(b => state.blocks[b] = []);
+  let memoryOnly = false;
+  const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2,6);
+
+  /* ---------- persistence (local, works offline) ---------- */
+  function storageOK(){
+    try{
+      const t = "__focus_test__";
+      localStorage.setItem(t,"1"); localStorage.removeItem(t);
+      return true;
+    }catch(e){ return false; }
+  }
+  async function load(){
+    if(!storageOK()){ memoryOnly = true; toast("Storage blocked \u2014 changes won't persist"); return; }
+    try{
+      const raw = localStorage.getItem(KEY);
+      if(raw){
+        const saved = JSON.parse(raw);
+        // migrate old shape: items.money -> blocks["8-10"]
+        if(saved.items && saved.items.money){
+          saved.blocks = saved.blocks || {};
+          BLOCKS.forEach(b => saved.blocks[b] = saved.blocks[b] || []);
+          saved.blocks[BLOCKS[0]] = saved.blocks[BLOCKS[0]].concat(saved.items.money);
+          delete saved.items.money;
+        }
+        saved.blocks = saved.blocks || {};
+        BLOCKS.forEach(b => saved.blocks[b] = saved.blocks[b] || []);
+        saved.assetGroups = saved.assetGroups || [];
+        if(saved.items && saved.items.assets && saved.items.assets.length){
+          saved.assetGroups.push({id:uid(), name:"General", items: saved.items.assets});
+        }
+        if(saved.items) delete saved.items.assets;
+        saved.items = Object.assign({todos:[],ideas:[],calls:[]}, saved.items || {});
+        state = Object.assign(state, saved);
+      }
+    }catch(e){ /* corrupted saved state; start fresh */ }
+  }
+  let saveTimer = null;
+  function save(){
+    if(memoryOnly) return;
+    clearTimeout(saveTimer);
+    saveTimer = setTimeout(() => {
+      try{ localStorage.setItem(KEY, JSON.stringify(state)); }
+      catch(e){ /* best effort */ }
+    }, 250);
+  }
+
+  /* ---------- rendering ---------- */
+  const CHECK = '<svg viewBox="0 0 16 16"><polyline points="3,8.5 6.5,12 13,4.5"/></svg>';
+  function esc(s){ const d=document.createElement("div"); d.textContent=s; return d.innerHTML; }
+  function rowHTML(it){
+    return '<div class="row'+(it.done?" done":"")+'" data-id="'+it.id+'">'+
+      '<div class="box">'+CHECK+'</div>'+
+      '<div class="rtext">'+esc(it.text)+'</div>'+
+      (it.carry ? '<div class="carry">'+"\u25CF".repeat(Math.min(it.carry,3))+'</div>' : "")+
+      '<button class="delbtn" data-del="'+it.id+'">&#10005;</button>'+
+    '</div>';
+  }
+  function renderBlocks(){
+    const host = document.getElementById("blocks");
+    host.innerHTML = BLOCKS.map(b =>
+      '<div class="block" data-block="'+b+'">'+
+        '<div class="blockhead"><div class="blocklabel">'+b+'</div>'+
+        '<button class="addbtn" data-baddbtn="'+b+'">+</button></div>'+
+        '<input class="newinput" data-binput="'+b+'" placeholder="Cash flow item for '+b+'&hellip;" enterkeyhint="done">'+
+        '<div class="blist">'+
+          (state.blocks[b].length ? state.blocks[b].map(rowHTML).join("") : '<div class="empty">&mdash;</div>')+
+        '</div>'+
+      '</div>'
+    ).join("");
+    wireBlocks();
+  }
+  function renderAssets(){
+    const host = document.getElementById("assetGroups");
+    if(!state.assetGroups.length){
+      host.innerHTML = '<div class="empty">No headers yet \u2014 tap + to add one (e.g. Etsy plans)</div>';
+      return;
+    }
+    host.innerHTML = state.assetGroups.map(g =>
+      '<div class="group" data-group="'+g.id+'">'+
+        '<div class="grouphead"><div class="groupname">'+esc(g.name)+'</div>'+
+        '<div><button class="delbtn" data-gdel="'+g.id+'">&#10005;</button>'+
+        '<button class="addbtn" data-gaddbtn="'+g.id+'">+</button></div></div>'+
+        '<input class="newinput" data-ginput="'+g.id+'" placeholder="Add under '+esc(g.name)+'&hellip;" enterkeyhint="done">'+
+        '<div class="glist">'+
+          (g.items.length ? g.items.map(rowHTML).join("") : '<div class="empty">&mdash;</div>')+
+        '</div>'+
+      '</div>'
+    ).join("");
+    wireAssets();
+  }
+  function renderSection(sec){
+    const list = document.querySelector('[data-list="'+sec+'"]');
+    const items = state.items[sec];
+    list.innerHTML = items.length
+      ? items.map(rowHTML).join("")
+      : '<div class="empty">Nothing here yet \u2014 tap +</div>';
+  }
+  function renderLot(){
+    document.getElementById("lotList").innerHTML = state.lot.map(it =>
+      '<div class="lotrow" data-id="'+it.id+'">'+
+        '<div class="t">'+esc(it.text)+'</div>'+
+        '<button class="mv" data-mv="todos">&#10003;</button>'+
+        '<button class="mv" data-mv="calls">&#9742;</button>'+
+        '<button class="rm">&#10005;</button>'+
+      '</div>'
+    ).join("");
+  }
+  function allItems(){
+    let arr = [];
+    BLOCKS.forEach(b => arr = arr.concat(state.blocks[b]));
+    state.assetGroups.forEach(g => arr = arr.concat(g.items));
+    SECTIONS.forEach(s => arr = arr.concat(state.items[s]));
+    return arr;
+  }
+  function renderStats(){
+    let done=0, open=0, carry=0;
+    allItems().forEach(it => {
+      it.done ? done++ : open++;
+      if(it.carry) carry++;
+    });
+    document.getElementById("statDone").textContent = done;
+    document.getElementById("statOpen").textContent = open + state.lot.length;
+    document.getElementById("statCarry").textContent = carry;
+    ["streak1","streak2","streak3","streak4"].forEach(id =>
+      document.getElementById(id).textContent = state.streak);
+  }
+  function renderAll(){
+    renderBlocks();
+    renderAssets();
+    SECTIONS.forEach(renderSection);
+    renderLot();
+    renderStats();
+  }
+
+  /* ---------- date ---------- */
+  const dateStr = new Date().toLocaleDateString("en-US",{weekday:"long",month:"long",day:"numeric"});
+  ["dateLabel","dateLabel2","dateLabel3","dateLabel4"].forEach(id =>
+    document.getElementById(id).textContent = dateStr);
+
+  /* ---------- toast ---------- */
+  let toastTimer=null;
+  function toast(msg){
+    const t = document.getElementById("toast");
+    t.textContent = msg;
+    t.classList.add("show");
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(()=>t.classList.remove("show"), 2200);
+  }
+
+  /* ---------- cash flow blocks ---------- */
+  document.getElementById("cashEdit").addEventListener("click", () => {
+    document.getElementById("cashSec").classList.toggle("editing");
+  });
+  function wireBlocks(){
+    document.querySelectorAll("[data-baddbtn]").forEach(btn => {
+      btn.addEventListener("click", () => {
+        const inp = document.querySelector('[data-binput="'+btn.dataset.baddbtn+'"]');
+        inp.classList.add("show"); inp.focus();
+      });
+    });
+    document.querySelectorAll("[data-binput]").forEach(inp => {
+      const b = inp.dataset.binput;
+      function commit(){
+        const v = inp.value.trim();
+        if(v){
+          state.blocks[b].push({id:uid(), text:v, done:false, carry:0});
+          renderBlocks(); renderStats(); save();
+          return;
+        }
+        inp.value=""; inp.classList.remove("show");
+      }
+      inp.addEventListener("keydown", e => { if(e.key==="Enter"){ e.preventDefault(); commit(); } });
+      inp.addEventListener("blur", () => { const v=inp.value.trim(); if(v){commit();} else {inp.classList.remove("show");} });
+    });
+    document.querySelectorAll(".block .blist").forEach(list => {
+      const b = list.closest(".block").dataset.block;
+      list.addEventListener("click", e => {
+        const del = e.target.closest("[data-del]");
+        if(del){
+          state.blocks[b] = state.blocks[b].filter(it => it.id !== del.dataset.del);
+          renderBlocks(); renderStats(); save();
+          document.getElementById("cashSec").classList.add("editing");
+          return;
+        }
+        const row = e.target.closest(".row");
+        if(!row || document.getElementById("cashSec").classList.contains("editing")) return;
+        const it = state.blocks[b].find(i => i.id === row.dataset.id);
+        if(it){ it.done = !it.done; renderBlocks(); renderStats(); save(); }
+      });
+    });
+  }
+
+  /* ---------- passive asset groups ---------- */
+  document.getElementById("assetEdit").addEventListener("click", () => {
+    document.getElementById("assetSec").classList.toggle("editing");
+  });
+  const assetGroupInput = document.getElementById("assetGroupInput");
+  document.getElementById("assetAddGroup").addEventListener("click", () => {
+    assetGroupInput.classList.add("show"); assetGroupInput.focus();
+  });
+  (function(){
+    function commit(){
+      const v = assetGroupInput.value.trim();
+      if(v){
+        state.assetGroups.push({id:uid(), name:v, items:[]});
+        renderAssets(); save();
+      }
+      assetGroupInput.value=""; assetGroupInput.classList.remove("show");
+    }
+    assetGroupInput.addEventListener("keydown", e => { if(e.key==="Enter"){ e.preventDefault(); commit(); } });
+    assetGroupInput.addEventListener("blur", commit);
+  })();
+  function wireAssets(){
+    document.querySelectorAll("[data-gaddbtn]").forEach(btn => {
+      btn.addEventListener("click", () => {
+        const inp = document.querySelector('[data-ginput="'+btn.dataset.gaddbtn+'"]');
+        inp.classList.add("show"); inp.focus();
+      });
+    });
+    document.querySelectorAll("[data-ginput]").forEach(inp => {
+      const gid = inp.dataset.ginput;
+      function commit(){
+        const g = state.assetGroups.find(x => x.id === gid);
+        const v = inp.value.trim();
+        if(g && v){
+          g.items.push({id:uid(), text:v, done:false, carry:0});
+          renderAssets(); renderStats(); save();
+          return;
+        }
+        inp.value=""; inp.classList.remove("show");
+      }
+      inp.addEventListener("keydown", e => { if(e.key==="Enter"){ e.preventDefault(); commit(); } });
+      inp.addEventListener("blur", () => { const v=inp.value.trim(); if(v){commit();} else {inp.classList.remove("show");} });
+    });
+    document.querySelectorAll("[data-gdel]").forEach(btn => {
+      btn.addEventListener("click", () => {
+        const g = state.assetGroups.find(x => x.id === btn.dataset.gdel);
+        if(!g) return;
+        if(g.items.length && !confirm('Delete header "'+g.name+'" and its '+g.items.length+' item(s)?')) return;
+        state.assetGroups = state.assetGroups.filter(x => x.id !== g.id);
+        renderAssets(); renderStats(); save();
+        document.getElementById("assetSec").classList.add("editing");
+      });
+    });
+    document.querySelectorAll(".group .glist").forEach(list => {
+      const gid = list.closest(".group").dataset.group;
+      list.addEventListener("click", e => {
+        const g = state.assetGroups.find(x => x.id === gid);
+        if(!g) return;
+        const del = e.target.closest("[data-del]");
+        if(del){
+          g.items = g.items.filter(it => it.id !== del.dataset.del);
+          renderAssets(); renderStats(); save();
+          document.getElementById("assetSec").classList.add("editing");
+          return;
+        }
+        const row = e.target.closest(".row");
+        if(!row || document.getElementById("assetSec").classList.contains("editing")) return;
+        const it = g.items.find(i => i.id === row.dataset.id);
+        if(it){ it.done = !it.done; renderAssets(); renderStats(); save(); }
+      });
+    });
+  }
+
+  /* ---------- plain sections ---------- */
+  document.querySelectorAll(".list").forEach(list => {
+    const sec = list.dataset.list;
+    list.addEventListener("click", e => {
+      const del = e.target.closest("[data-del]");
+      if(del){
+        state.items[sec] = state.items[sec].filter(it => it.id !== del.dataset.del);
+        renderSection(sec); renderStats(); save();
+        return;
+      }
+      const row = e.target.closest(".row");
+      if(!row || list.closest(".sec").classList.contains("editing")) return;
+      const it = state.items[sec].find(i => i.id === row.dataset.id);
+      if(it){ it.done = !it.done; renderSection(sec); renderStats(); save(); }
+    });
+  });
+  document.querySelectorAll("[data-add]").forEach(btn => {
+    btn.addEventListener("click", () => {
+      const inp = document.querySelector('[data-input="'+btn.dataset.add+'"]');
+      inp.classList.add("show"); inp.focus();
+    });
+  });
+  document.querySelectorAll("[data-edit]").forEach(btn => {
+    btn.addEventListener("click", () => btn.closest(".sec").classList.toggle("editing"));
+  });
+  document.querySelectorAll(".newinput[data-input]").forEach(inp => {
+    const sec = inp.dataset.input;
+    function commit(){
+      const v = inp.value.trim();
+      if(v){
+        state.items[sec].push({id:uid(), text:v, done:false, carry:0});
+        renderSection(sec); renderStats(); save();
+        inp.value="";
+        return;
+      }
+      inp.value=""; inp.classList.remove("show");
+    }
+    inp.addEventListener("keydown", e => { if(e.key==="Enter"){ e.preventDefault(); commit(); } });
+    inp.addEventListener("blur", commit);
+  });
+
+  /* ---------- parking lot ---------- */
+  const lotInput = document.getElementById("lotInput");
+  function lotCommit(){
+    const v = lotInput.value.trim();
+    if(!v) return;
+    state.lot.push({id:uid(), text:v});
+    lotInput.value="";
+    renderLot(); renderStats(); save();
+  }
+  document.getElementById("lotAdd").addEventListener("click", lotCommit);
+  lotInput.addEventListener("keydown", e => { if(e.key==="Enter"){ e.preventDefault(); lotCommit(); } });
+  document.getElementById("lotList").addEventListener("click", e => {
+    const row = e.target.closest(".lotrow"); if(!row) return;
+    const it = state.lot.find(i => i.id === row.dataset.id); if(!it) return;
+    const mv = e.target.closest("[data-mv]");
+    if(mv){
+      state.items[mv.dataset.mv].push({id:uid(), text:it.text, done:false, carry:0});
+      state.lot = state.lot.filter(i => i.id !== it.id);
+      renderAll(); save();
+      toast(mv.dataset.mv === "calls" ? "Moved to Calls" : "Moved to To-Dos");
+      return;
+    }
+    if(e.target.closest(".rm")){
+      state.lot = state.lot.filter(i => i.id !== it.id);
+      renderLot(); renderStats(); save();
+    }
+  });
+
+  /* ---------- close the day ---------- */
+  document.getElementById("closeDay").addEventListener("click", () => {
+    let done=0, carried=0;
+    BLOCKS.forEach(b => {
+      done += state.blocks[b].filter(i=>i.done).length;
+      state.blocks[b] = state.blocks[b].filter(i=>!i.done);
+      state.blocks[b].forEach(i => { i.carry = (i.carry||0)+1; carried++; });
+    });
+    state.assetGroups.forEach(g => {
+      done += g.items.filter(i=>i.done).length;
+      g.items = g.items.filter(i=>!i.done);
+      g.items.forEach(i => { i.carry = (i.carry||0)+1; carried++; });
+    });
+    SECTIONS.forEach(s => {
+      done += state.items[s].filter(i=>i.done).length;
+      state.items[s] = state.items[s].filter(i=>!i.done);
+      state.items[s].forEach(i => { i.carry = (i.carry||0)+1; carried++; });
+    });
+    state.streak = (state.streak||0)+1;
+    state.lastClosed = new Date().toISOString();
+    renderAll(); save();
+    toast("Day closed \u2014 "+done+" done, "+carried+" carried to tomorrow");
+    goTo(0);
+  });
+
+  document.getElementById("resetAll").addEventListener("click", () => {
+    if(!confirm("Wipe all items and reset the streak?")) return;
+    state = {streak:0, lastClosed:null, blocks:{}, assetGroups:[], items:{todos:[],ideas:[],calls:[]}, lot:[]};
+    BLOCKS.forEach(b => state.blocks[b] = []);
+    renderAll();
+    if(!memoryOnly){ try{ localStorage.setItem(KEY, JSON.stringify(state)); }catch(e){} }
+    toast("Fresh start");
+  });
+
+  /* ---------- navigation ---------- */
+  const deck = document.getElementById("deck");
+  const navBtns = Array.from(document.querySelectorAll("#nav button"));
+  function goTo(i){ deck.scrollTo({left: i * window.innerWidth, behavior:"smooth"}); }
+  navBtns.forEach(b => b.addEventListener("click", () => goTo(+b.dataset.go)));
+  deck.addEventListener("scroll", () => {
+    const i = Math.round(deck.scrollLeft / window.innerWidth);
+    navBtns.forEach((b,j) => b.classList.toggle("active", j===i));
+  }, {passive:true});
+
+  /* ---------- boot ---------- */
+  load().then(() => {
+    const empty = allItems().length===0 && !state.lot.length && !state.streak;
+    if(empty){
+      state.blocks[BLOCKS[0]] = [{id:uid(), text:"Trent B. commission \u2014 shop block", done:false, carry:0}];
+      state.blocks[BLOCKS[2]] = [{id:uid(), text:"Follow up: pending quote", done:false, carry:0}];
+      state.assetGroups = [
+        {id:uid(), name:"Etsy plans", items:[
+          {id:uid(), text:"Table plan", done:false, carry:0},
+          {id:uid(), text:"Sled plan \u2014 drawing", done:false, carry:0}
+        ]},
+        {id:uid(), name:"Etsy products", items:[
+          {id:uid(), text:"Scribing tool", done:false, carry:0},
+          {id:uid(), text:"Modified hammer", done:false, carry:0}
+        ]}
+      ];
+      state.items.todos = [{id:uid(), text:"Order finish supplies", done:false, carry:0}];
+      save();
+    }
+    renderAll();
+  });
+
+  /* ---------- offline: service worker ---------- */
+  if("serviceWorker" in navigator){
+    window.addEventListener("load", () => {
+      navigator.serviceWorker.register("./sw.js").catch(()=>{});
+    });
+  }
+})();
+</script>
+</body>
+</html>
