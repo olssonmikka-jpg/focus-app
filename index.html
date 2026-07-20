@@ -85,6 +85,9 @@
   .rtext{flex:1 1 auto;font-size:17px;line-height:1.29;transition:color .15s}
   .row.done .rtext{color:var(--done);text-decoration:line-through;text-decoration-thickness:1.5px}
   .carry{flex:0 0 auto;font-size:11px;letter-spacing:2px;color:var(--gray)}
+  .cp{flex:0 0 auto;border:1.2px solid var(--ink);background:none;border-radius:4px;
+    font-size:12px;font-weight:700;padding:4px 7px;cursor:pointer;color:var(--ink)}
+  .cp:active{background:var(--ink);color:var(--paper)}
   .delbtn{flex:0 0 auto;display:none;border:none;background:none;color:var(--gray);font-size:16px;width:30px;height:30px;cursor:pointer}
   .editing .delbtn{display:block}
   .editing .row{cursor:default}
@@ -334,6 +337,16 @@
       '<button class="delbtn" data-del="'+it.id+'">&#10005;</button>'+
     '</div>';
   }
+  function assetRowHTML(it){
+    return '<div class="row'+(it.done?" done":"")+'" data-id="'+it.id+'">'+
+      '<div class="box">'+CHECK+'</div>'+
+      '<div class="rtext">'+esc(it.text)+'</div>'+
+      (it.carry ? '<div class="carry">'+"●".repeat(Math.min(it.carry,3))+'</div>' : "")+
+      '<button class="cp" data-cp="todos" title="Copy to To-Dos">&#10003;</button>'+
+      '<button class="cp" data-cp="calls" title="Copy to Calls">&#9742;</button>'+
+      '<button class="delbtn" data-del="'+it.id+'">&#10005;</button>'+
+    '</div>';
+  }
   function renderBlocks(){
     const host = document.getElementById("blocks");
     host.innerHTML = BLOCKS.map(b =>
@@ -361,7 +374,7 @@
         '<button class="addbtn" data-gaddbtn="'+g.id+'">+</button></div></div>'+
         '<input class="newinput" data-ginput="'+g.id+'" placeholder="Add under '+esc(g.name)+'&hellip;" enterkeyhint="done">'+
         '<div class="glist">'+
-          (g.items.length ? g.items.map(rowHTML).join("") : '<div class="empty">&mdash;</div>')+
+          (g.items.length ? g.items.map(assetRowHTML).join("") : '<div class="empty">&mdash;</div>')+
         '</div>'+
       '</div>'
     ).join("");
@@ -526,6 +539,18 @@
       list.addEventListener("click", e => {
         const g = state.assetGroups.find(x => x.id === gid);
         if(!g) return;
+        const cp = e.target.closest("[data-cp]");
+        if(cp){
+          const row = cp.closest(".row");
+          const it = g.items.find(i => i.id === row.dataset.id);
+          if(it){
+            const dest = cp.dataset.cp;
+            state.items[dest].push({id:uid(), text:it.text, done:false, carry:0});
+            renderSection(dest); renderStats(); save();
+            toast(dest === "calls" ? "Copied to Calls" : "Copied to To-Dos");
+          }
+          return;
+        }
         const del = e.target.closest("[data-del]");
         if(del){
           g.items = g.items.filter(it => it.id !== del.dataset.del);
