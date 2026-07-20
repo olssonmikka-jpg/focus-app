@@ -82,7 +82,8 @@
     stroke-dasharray:20;stroke-dashoffset:20;transition:stroke-dashoffset .18s ease-out}
   .row.done .box{background:var(--ink)}
   .row.done .box svg{stroke-dashoffset:0}
-  .rtext{flex:1 1 auto;min-width:0;font-size:17px;line-height:1.29;transition:color .15s}
+  .rtext{flex:1 1 auto;min-width:0;font-size:17px;line-height:1.29;transition:color .15s;
+    overflow-wrap:anywhere;word-break:break-word}
   .row.done .rtext{color:var(--done);text-decoration:line-through;text-decoration-thickness:1.5px}
   .carry{flex:0 0 auto;font-size:11px;letter-spacing:2px;color:var(--gray)}
   .cp{flex:0 0 auto;border:1.2px solid var(--ink);background:none;border-radius:4px;
@@ -110,7 +111,7 @@
     font-size:20px;font-weight:700;width:44px;cursor:pointer;
   }
   .lotrow{display:flex;align-items:center;gap:8px;padding:10px 2px;border-bottom:1px solid var(--hair);font-size:17px}
-  .lotrow .t{flex:1}
+  .lotrow .t{flex:1;min-width:0;overflow-wrap:anywhere;word-break:break-word}
   .lotrow .mv{border:1.2px solid var(--ink);background:none;border-radius:4px;font-size:12px;font-weight:700;
     padding:4px 7px;cursor:pointer;color:var(--ink)}
   .lotrow .rm{border:none;background:none;color:var(--gray);font-size:16px;width:26px;cursor:pointer}
@@ -337,7 +338,7 @@
       '<button class="delbtn" data-del="'+it.id+'">&#10005;</button>'+
     '</div>';
   }
-  function assetRowHTML(it){
+  function copyableRowHTML(it){
     return '<div class="row'+(it.done?" done":"")+'" data-id="'+it.id+'">'+
       '<div class="box">'+CHECK+'</div>'+
       '<div class="rtext">'+esc(it.text)+'</div>'+
@@ -374,7 +375,7 @@
         '<button class="addbtn" data-gaddbtn="'+g.id+'">+</button></div></div>'+
         '<input class="newinput" data-ginput="'+g.id+'" placeholder="Add under '+esc(g.name)+'&hellip;" enterkeyhint="done">'+
         '<div class="glist">'+
-          (g.items.length ? g.items.map(assetRowHTML).join("") : '<div class="empty">&mdash;</div>')+
+          (g.items.length ? g.items.map(copyableRowHTML).join("") : '<div class="empty">&mdash;</div>')+
         '</div>'+
       '</div>'
     ).join("");
@@ -383,8 +384,9 @@
   function renderSection(sec){
     const list = document.querySelector('[data-list="'+sec+'"]');
     const items = state.items[sec];
+    const render = sec === "ideas" ? copyableRowHTML : rowHTML;
     list.innerHTML = items.length
-      ? items.map(rowHTML).join("")
+      ? items.map(render).join("")
       : '<div class="empty">Nothing here yet \u2014 tap +</div>';
   }
   function renderLot(){
@@ -570,6 +572,18 @@
   document.querySelectorAll(".list").forEach(list => {
     const sec = list.dataset.list;
     list.addEventListener("click", e => {
+      const cp = e.target.closest("[data-cp]");
+      if(cp){
+        const row = cp.closest(".row");
+        const it = state.items[sec].find(i => i.id === row.dataset.id);
+        if(it){
+          const dest = cp.dataset.cp;
+          state.items[dest].push({id:uid(), text:it.text, done:false, carry:0});
+          renderSection(dest); renderStats(); save();
+          toast(dest === "calls" ? "Copied to Calls" : "Copied to To-Dos");
+        }
+        return;
+      }
       const del = e.target.closest("[data-del]");
       if(del){
         state.items[sec] = state.items[sec].filter(it => it.id !== del.dataset.del);
