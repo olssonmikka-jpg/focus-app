@@ -33,7 +33,7 @@
   #deck::-webkit-scrollbar{display:none}
   .page{
     flex:0 0 100vw;height:100%;scroll-snap-align:start;scroll-snap-stop:always;
-    display:flex;flex-direction:column;
+    display:flex;flex-direction:column;overflow-x:hidden;
     padding:calc(env(safe-area-inset-top,0px) + 18px) 22px 18px;
   }
   .phead{flex:0 0 auto;padding-bottom:10px;border-bottom:2px solid var(--ink);margin-bottom:6px}
@@ -82,7 +82,7 @@
     stroke-dasharray:20;stroke-dashoffset:20;transition:stroke-dashoffset .18s ease-out}
   .row.done .box{background:var(--ink)}
   .row.done .box svg{stroke-dashoffset:0}
-  .rtext{flex:1 1 auto;font-size:17px;line-height:1.29;transition:color .15s}
+  .rtext{flex:1 1 auto;min-width:0;font-size:17px;line-height:1.29;transition:color .15s}
   .row.done .rtext{color:var(--done);text-decoration:line-through;text-decoration-thickness:1.5px}
   .carry{flex:0 0 auto;font-size:11px;letter-spacing:2px;color:var(--gray)}
   .cp{flex:0 0 auto;border:1.2px solid var(--ink);background:none;border-radius:4px;
