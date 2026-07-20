@@ -19,18 +19,19 @@
   body{
     font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
     background:var(--paper);color:var(--ink);
+    display:flex;flex-direction:column;height:100dvh;
   }
   #deck{
-    display:flex;height:100dvh;width:100vw;
+    display:flex;flex:1 1 auto;min-height:0;width:100vw;
     overflow-x:auto;overflow-y:hidden;
     scroll-snap-type:x mandatory;scroll-behavior:smooth;
     scrollbar-width:none;
   }
   #deck::-webkit-scrollbar{display:none}
   .page{
-    flex:0 0 100vw;height:100dvh;scroll-snap-align:start;scroll-snap-stop:always;
+    flex:0 0 100vw;height:100%;scroll-snap-align:start;scroll-snap-stop:always;
     display:flex;flex-direction:column;
-    padding:calc(env(safe-area-inset-top,0px) + 18px) 22px calc(env(safe-area-inset-bottom,0px) + 72px);
+    padding:calc(env(safe-area-inset-top,0px) + 18px) 22px 18px;
   }
   .phead{flex:0 0 auto;padding-bottom:10px;border-bottom:2px solid var(--ink);margin-bottom:6px}
   .eyebrow{font-size:10px;font-weight:700;letter-spacing:.18em;color:var(--gray);text-transform:uppercase}
@@ -123,7 +124,7 @@
     background:none;border:none;text-decoration:underline;cursor:pointer;width:100%}
   /* nav */
   #nav{
-    position:fixed;left:0;right:0;bottom:0;display:flex;
+    flex:0 0 auto;display:flex;
     background:var(--paper);border-top:1.5px solid var(--ink);
     padding-bottom:env(safe-area-inset-bottom,0px);z-index:10;
   }
