@@ -649,7 +649,14 @@
      To enable: create a free Firebase project (console.firebase.google.com),
      enable Anonymous auth + Firestore, register a Web app, and paste its
      config below in place of the empty object. See setup notes in repo. */
-  const FIREBASE_CONFIG = {};
+  const FIREBASE_CONFIG = {
+    apiKey: "AIzaSyCQwd7wLx5iLNjwaeQD9JaFORJFbrleIsU",
+    authDomain: "focus-app-5be8b.firebaseapp.com",
+    projectId: "focus-app-5be8b",
+    storageBucket: "focus-app-5be8b.firebasestorage.app",
+    messagingSenderId: "749902078589",
+    appId: "1:749902078589:web:cb8435eafcb7524d870714"
+  };
   const SYNC_KEY = "focus-sync-code";
   let fbReady = null, fbUnsub = null, lastPulledAt = 0;
 
