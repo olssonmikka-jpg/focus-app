@@ -26,10 +26,6 @@
   input,textarea,select{font-family:inherit;color:var(--ink);background:transparent;outline:none;border:none}
   .fld{width:100%;font-size:20px;font-weight:800;border-bottom:1.5px dashed var(--hair);padding:4px 0}
   .fld:focus{border-color:var(--ink)}
-  .fldsub{width:100%;font-size:14px;color:var(--gray);border-bottom:1px dashed var(--hair);padding:4px 0;margin-top:6px}
-  .fldsub:focus{border-color:var(--ink);color:var(--ink)}
-  .ratebox{display:flex;align-items:center;gap:8px;margin-top:10px;font-size:13px;color:var(--gray)}
-  .ratebox input{width:70px;font-size:13px;border-bottom:1px dashed var(--hair);padding:2px 0;color:var(--ink)}
   /* tabs */
   .tabs{display:flex;border:1.6px solid var(--ink);border-radius:8px;overflow:hidden;margin-bottom:18px}
   .tabbtn{flex:1;background:none;border:none;padding:11px;font-size:13px;font-weight:800;letter-spacing:.08em;
@@ -72,6 +68,7 @@
   .erow{display:flex;align-items:baseline;gap:8px;padding:8px 2px;border-bottom:1px solid var(--hair);font-size:14px}
   .erow .ed{flex:0 0 auto;color:var(--gray);font-size:12px;width:64px}
   .erow .et{flex:1;min-width:0;overflow-wrap:anywhere}
+  .edim{color:var(--gray);font-size:12px}
   .erow .ev{flex:0 0 auto;font-weight:700}
   .erow .erm{flex:0 0 auto;border:none;background:none;color:var(--gray);font-size:15px;width:22px;cursor:pointer}
   .addrow{display:flex;flex-wrap:wrap;gap:8px;padding:10px 2px 2px;align-items:center}
@@ -244,14 +241,14 @@
   let activeTab = "projects";
 
   function emptyProject(name, client){
-    return { name: name||"Untitled Project", client: client||"", hourlyRate: 0, jobs: [], payments: [], updatedAt: Date.now() };
+    return { name: name||"Untitled Project", client: client||"", jobs: [], payments: [], updatedAt: Date.now() };
   }
 
   function jobTotals(job){
     const hours = (job.time||[]).reduce((s,e)=>s+(Number(e.hours)||0),0);
+    const labor = (job.time||[]).reduce((s,e)=>s+(Number(e.hours)||0)*(Number(e.rate)||0),0);
     const materials = (job.materials||[]).reduce((s,e)=>s+(Number(e.cost)||0),0);
     const travel = (job.travel||[]).reduce((s,e)=>s+(Number(e.cost)||0),0);
-    const labor = hours * (Number(project.hourlyRate)||0);
     return { hours, materials, travel, labor, total: labor+materials+travel };
   }
   function projectTotals(){
@@ -270,9 +267,9 @@
       (job.time||[]).forEach(e => rows.push({
         id:e.id, date:e.date, kind:"time",
         desc: jt + (e.desc ? " — "+e.desc : ""),
-        rate: Number(project.hourlyRate)||0,
+        rate: Number(e.rate)||0,
         hours: Number(e.hours)||0,
-        amount: (Number(e.hours)||0) * (Number(project.hourlyRate)||0)
+        amount: (Number(e.hours)||0) * (Number(e.rate)||0)
       }));
       (job.materials||[]).forEach(e => rows.push({
         id:e.id, date:e.date, kind:"materials",
@@ -399,9 +396,10 @@
   function entryRow(job, kind, e){
     const isMoney = kind !== "time";
     const val = isMoney ? money(e.cost) : hrsFmt(e.hours);
+    const desc = esc(e.desc||"") + (kind==="time" && e.rate ? ' <span class="edim">&middot; '+esc(money(e.rate))+'/hr</span>' : "");
     return '<div class="erow" data-kind="'+kind+'" data-job="'+job.id+'" data-entry="'+e.id+'">' +
       '<div class="ed">'+esc(dateFmt(e.date))+'</div>' +
-      '<div class="et">'+esc(e.desc||"")+'</div>' +
+      '<div class="et">'+desc+'</div>' +
       '<div class="ev">'+val+'</div>' +
       (isView ? '' : '<button class="erm" data-rm="1">×</button>') +
       '</div>';
@@ -471,9 +469,11 @@
       body += '<div class="subsec"><div class="subhead">Time</div>';
       body += (job.time||[]).map(e => entryRow(job,"time",e)).join("") || (isView?'<div class="empty">No time logged.</div>':'');
       if(!isView){
+        const lastRate = (job.time||[]).length ? (job.time[job.time.length-1].rate||"") : "";
         body += '<div class="addrow" data-add="time" data-job="'+job.id+'">' +
           '<input type="date" class="idate" value="'+todayStr()+'">' +
           '<input type="number" class="inum" placeholder="Hrs" step="0.25" min="0">' +
+          '<input type="number" class="inum" placeholder="$/hr" step="1" min="0" value="'+lastRate+'">' +
           '<input type="text" class="itext" placeholder="What was done">' +
           '<button class="iadd">+</button></div>';
       }
@@ -600,10 +600,8 @@
     let html = '<div class="phead">' +
       '<div class="eyebrow">'+(isView?"Job Tracker &middot; Shared":"Job Tracker")+'</div>' +
       (isView
-        ? '<div class="title">'+esc(project.name)+'</div><div class="sub">'+esc(project.client||"")+'</div>'
-        : '<input class="fld" id="pName" value="'+esc(project.name)+'" placeholder="Project name">' +
-          '<input class="fldsub" id="pClient" value="'+esc(project.client||"")+'" placeholder="Client name">' +
-          '<div class="ratebox">Hourly rate $ <input type="number" id="pRate" value="'+(project.hourlyRate||0)+'" step="1" min="0"> /hr</div>') +
+        ? '<div class="title">'+esc(project.name)+'</div>'
+        : '<input class="fld" id="pName" value="'+esc(project.name)+'" placeholder="Project name">') +
       '</div>';
 
     html += '<div class="tabs">' +
@@ -635,7 +633,7 @@
   function renderPrintSheet(ledger, lt){
     let html = '<div class="psh1">'+esc(project.name)+'</div>' +
       '<div class="psh2">'+esc(project.client||"")+'</div>' +
-      '<div class="psmeta">Printed '+esc(new Date().toLocaleDateString())+(project.hourlyRate?(' &middot; Rate '+esc(money(project.hourlyRate))+'/hr'):'')+'</div>';
+      '<div class="psmeta">Printed '+esc(new Date().toLocaleDateString())+'</div>';
 
     (project.jobs||[]).forEach(job => {
       const t = jobTotals(job);
@@ -697,11 +695,7 @@
 
     if(!isView){
       const pName = document.getElementById("pName");
-      const pClient = document.getElementById("pClient");
-      const pRate = document.getElementById("pRate");
       pName.addEventListener("change", () => { project.name = pName.value.trim()||"Untitled Project"; saveRecent(projectId, project.name, project.client, "edit"); queueSave(); });
-      pClient.addEventListener("change", () => { project.client = pClient.value.trim(); saveRecent(projectId, project.name, project.client, "edit"); queueSave(); });
-      pRate.addEventListener("change", () => { project.hourlyRate = Math.max(0, Number(pRate.value)||0); queueSave(); });
 
       const addJobBtn = document.getElementById("addJob");
       if(addJobBtn){
@@ -841,9 +835,11 @@
         const date = row.querySelector(".idate").value || todayStr();
         const entry = {id: uid(), date};
         if(kind === "time"){
-          const hours = Number(row.querySelector(".inum").value);
+          const nums = row.querySelectorAll(".inum");
+          const hours = Number(nums[0].value);
           if(!hours || hours<=0){ toast("Enter hours"); return; }
           entry.hours = hours;
+          entry.rate = Number(nums[1].value)||0;
           entry.desc = row.querySelector(".itext").value.trim();
         } else {
           const cost = Number(row.querySelector(".inum").value)||0;
