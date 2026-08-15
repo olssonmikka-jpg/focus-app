@@ -8,8 +8,7 @@
 <title>Project Tracker</title>
 <script defer src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js"></script>
 <script defer src="https://www.gstatic.com/firebasejs/10.14.1/firebase-auth-compat.js"></script>
-<script defer src="https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore-compat.js"></script>
-<style>
+<script defer src="https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore-compat.js"></script><style>
   :root{
     --paper:#FAFAF8; --ink:#141414; --gray:#8a8a86; --hair:#e3e3df; --faint:#f0f0ec;
   }
@@ -83,13 +82,23 @@
   .addrow .itext{flex:1 1 120px;min-width:100px}
   .addrow .iadd{flex:0 0 auto;background:var(--ink);color:var(--paper);border:none;border-radius:5px;
     width:36px;height:36px;font-size:18px;font-weight:700;cursor:pointer}
-  .notes{width:100%;font-size:14px;line-height:1.4;border:1.3px solid var(--hair);border-radius:6px;
-    padding:9px 10px;margin-top:12px;min-height:52px;resize:vertical;background:#fff}
-  .notes:focus{border-color:var(--ink)}
-  .notes:disabled{background:transparent;border-color:var(--hair);color:var(--ink)}
   .jdel{width:100%;margin-top:14px;background:none;border:1.3px solid var(--hair);color:var(--gray);
     border-radius:6px;padding:9px;font-size:12px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;cursor:pointer}
   .jdel:active{border-color:var(--ink);color:var(--ink)}
+  /* notes */
+  .ntrow{display:flex;align-items:center;gap:8px;padding:8px 2px;border-bottom:1px solid var(--hair)}
+  .ntinput{flex:1;min-width:0;font-size:14px;padding:2px 0;border-bottom:1.5px dashed transparent}
+  .ntinput:focus{border-color:var(--gray)}
+  .nttext{flex:1;min-width:0;font-size:14px;overflow-wrap:anywhere}
+  .ntrm{flex:0 0 auto;border:none;background:none;color:var(--gray);font-size:15px;width:20px;cursor:pointer}
+  /* tasks */
+  .trow{display:flex;align-items:center;gap:10px;padding:8px 2px;border-bottom:1px solid var(--hair)}
+  .tbox{flex:0 0 auto;width:19px;height:19px;border:1.6px solid var(--ink);border-radius:3px;cursor:pointer;
+    display:flex;align-items:center;justify-content:center;font-size:12px;color:var(--paper)}
+  .trow.done .tbox{background:var(--ink)}
+  .ttext{flex:1;min-width:0;font-size:14px;overflow-wrap:anywhere}
+  .trow.done .ttext{color:var(--gray);text-decoration:line-through}
+  .trm{flex:0 0 auto;border:none;background:none;color:var(--gray);font-size:15px;width:20px;cursor:pointer}
   /* ledger (cost tab) */
   .ledger{margin-top:4px}
   .lrow{padding:10px 2px;border-bottom:1px solid var(--hair)}
@@ -141,6 +150,7 @@
     .pstable td{padding:4px 6px;border-bottom:1px solid #ddd}
     .pstable td.num{text-align:right;white-space:nowrap}
     .psjtotals{display:flex;gap:16px;margin-top:6px;font-size:11px;font-weight:700}
+    .pstasks{margin-top:6px;font-size:11px;color:#333}
     .psstatement{margin-top:24px}
     .psgrand{margin-top:24px;border-top:2px solid #000;padding-top:10px}
     .psgrand table{width:100%;font-size:13px}
@@ -397,6 +407,51 @@
       '</div>';
   }
 
+  function noteRow(job, n){
+    return '<div class="ntrow" data-noterow="'+n.id+'" data-job="'+job.id+'">' +
+      (isView
+        ? '<div class="nttext">'+esc(n.text)+'</div>'
+        : '<input class="ntinput" data-noteinput="'+n.id+'" value="'+esc(n.text)+'">') +
+      (isView?'':'<button class="ntrm" data-rmnote="1">&times;</button>') +
+    '</div>';
+  }
+
+  function renderNotesSection(job){
+    const notes = job.notes||[];
+    if(isView && !notes.length) return "";
+    let html = '<div class="subsec"><div class="subhead">Notes</div>';
+    html += notes.map(n => noteRow(job,n)).join("") || (isView?'<div class="empty">No notes yet.</div>':'');
+    if(!isView){
+      html += '<div class="addrow" data-addnote="'+job.id+'">' +
+        '<input type="text" class="itext" placeholder="Add a note">' +
+        '<button class="iadd">+</button></div>';
+    }
+    html += '</div>';
+    return html;
+  }
+
+  function taskRow(job, t){
+    return '<div class="trow'+(t.done?" done":"")+'" data-taskrow="'+t.id+'" data-job="'+job.id+'">' +
+      '<div class="tbox"'+(isView?"":' data-taskbox="1"')+'>'+(t.done?"&#10003;":"")+'</div>' +
+      '<div class="ttext">'+esc(t.text)+'</div>' +
+      (isView?'':'<button class="trm" data-rmtask="1">&times;</button>') +
+    '</div>';
+  }
+
+  function renderTasksSection(job){
+    const tasks = job.tasks||[];
+    if(isView && !tasks.length) return "";
+    let html = '<div class="subsec"><div class="subhead">Tasks</div>';
+    html += tasks.map(t => taskRow(job,t)).join("") || (isView?'<div class="empty">No tasks yet.</div>':'');
+    if(!isView){
+      html += '<div class="addrow" data-addtask="'+job.id+'">' +
+        '<input type="text" class="itext" placeholder="Add a task">' +
+        '<button class="iadd">+</button></div>';
+    }
+    html += '</div>';
+    return html;
+  }
+
   function renderJob(job){
     const t = jobTotals(job);
     const open = expanded.has(job.id);
@@ -408,6 +463,9 @@
         '<span><b>'+money(t.materials)+'</b> materials</span>' +
         '<span><b>'+money(t.travel)+'</b> travel</span>' +
         '</div>';
+
+      body += renderNotesSection(job);
+      body += renderTasksSection(job);
 
       // time
       body += '<div class="subsec"><div class="subhead">Time</div>';
@@ -444,11 +502,6 @@
           '<button class="iadd">+</button></div>';
       }
       body += '</div>';
-
-      // notes
-      if(!isView || job.notes){
-        body += '<textarea class="notes" data-notes="'+job.id+'" placeholder="Notes"'+(isView?" disabled":"")+'>'+esc(job.notes||"")+'</textarea>';
-      }
 
       if(!isView){
         body += '<button class="jdel" data-deljob="'+job.id+'">Delete Job</button>';
@@ -607,7 +660,14 @@
         '<span>Materials: '+money(t.materials)+'</span>' +
         '<span>Travel: '+money(t.travel)+'</span>' +
         '</div>';
-      if(job.notes) html += '<div class="psh2" style="margin-top:6px">'+esc(job.notes)+'</div>';
+      if((job.notes||[]).length){
+        html += '<div class="pstasks">' + job.notes.map(n => '<div>'+esc(n.text)+'</div>').join("") + '</div>';
+      }
+      if((job.tasks||[]).length){
+        html += '<div class="pstasks">' + job.tasks.map(t =>
+          '<div>['+(t.done?"x":" ")+'] '+esc(t.text)+'</div>'
+        ).join("") + '</div>';
+      }
       html += '</div>';
     });
 
@@ -646,7 +706,7 @@
       const addJobBtn = document.getElementById("addJob");
       if(addJobBtn){
         addJobBtn.addEventListener("click", () => {
-          const job = {id: uid(), title:"", status:"planned", notes:"", time:[], materials:[], travel:[]};
+          const job = {id: uid(), title:"", status:"planned", notes:[], time:[], materials:[], travel:[], tasks:[]};
           project.jobs.push(job);
           expanded.add(job.id);
           queueSave();
@@ -724,11 +784,41 @@
       });
     });
 
-    app.querySelectorAll("[data-notes]").forEach(ta => {
-      ta.addEventListener("change", () => {
-        const job = findJob(ta.getAttribute("data-notes"));
-        if(job){ job.notes = ta.value; queueSave(); }
+    app.querySelectorAll("[data-noteinput]").forEach(inp => {
+      inp.addEventListener("click", e => e.stopPropagation());
+      inp.addEventListener("change", () => {
+        const row = inp.closest(".ntrow");
+        const job = findJob(row.getAttribute("data-job"));
+        if(!job) return;
+        const note = (job.notes||[]).find(n => n.id === row.getAttribute("data-noterow"));
+        if(note){ note.text = inp.value.trim(); queueSave(); }
       });
+    });
+
+    app.querySelectorAll("[data-rmnote]").forEach(btn => {
+      btn.addEventListener("click", e => {
+        e.stopPropagation();
+        const row = btn.closest(".ntrow");
+        const job = findJob(row.getAttribute("data-job"));
+        if(!job) return;
+        job.notes = (job.notes||[]).filter(n => n.id !== row.getAttribute("data-noterow"));
+        queueSave();
+      });
+    });
+
+    app.querySelectorAll("[data-addnote]").forEach(row => {
+      const jobId = row.getAttribute("data-addnote");
+      const input = row.querySelector(".itext");
+      const add = () => {
+        const job = findJob(jobId); if(!job) return;
+        const text = input.value.trim();
+        if(!text) return;
+        job.notes = job.notes || [];
+        job.notes.push({id: uid(), text});
+        queueSave();
+      };
+      row.querySelector(".iadd").addEventListener("click", add);
+      input.addEventListener("keydown", e => { if(e.key === "Enter"){ e.preventDefault(); add(); } });
     });
 
     app.querySelectorAll("[data-deljob]").forEach(btn => {
@@ -777,6 +867,45 @@
         job[kind] = (job[kind]||[]).filter(x => x.id !== row.getAttribute("data-entry"));
         queueSave();
       });
+    });
+
+    app.querySelectorAll("[data-taskbox]").forEach(box => {
+      box.addEventListener("click", e => {
+        e.stopPropagation();
+        const row = box.closest(".trow");
+        const job = findJob(row.getAttribute("data-job"));
+        if(!job) return;
+        const task = (job.tasks||[]).find(t => t.id === row.getAttribute("data-taskrow"));
+        if(!task) return;
+        task.done = !task.done;
+        queueSave();
+      });
+    });
+
+    app.querySelectorAll("[data-rmtask]").forEach(btn => {
+      btn.addEventListener("click", e => {
+        e.stopPropagation();
+        const row = btn.closest(".trow");
+        const job = findJob(row.getAttribute("data-job"));
+        if(!job) return;
+        job.tasks = (job.tasks||[]).filter(t => t.id !== row.getAttribute("data-taskrow"));
+        queueSave();
+      });
+    });
+
+    app.querySelectorAll("[data-addtask]").forEach(row => {
+      const jobId = row.getAttribute("data-addtask");
+      const input = row.querySelector(".itext");
+      const add = () => {
+        const job = findJob(jobId); if(!job) return;
+        const text = input.value.trim();
+        if(!text) return;
+        job.tasks = job.tasks || [];
+        job.tasks.push({id: uid(), text, done:false});
+        queueSave();
+      };
+      row.querySelector(".iadd").addEventListener("click", add);
+      input.addEventListener("keydown", e => { if(e.key === "Enter"){ e.preventDefault(); add(); } });
     });
   }
 
