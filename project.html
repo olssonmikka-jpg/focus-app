@@ -31,6 +31,13 @@
   .fldsub:focus{border-color:var(--ink);color:var(--ink)}
   .ratebox{display:flex;align-items:center;gap:8px;margin-top:10px;font-size:13px;color:var(--gray)}
   .ratebox input{width:70px;font-size:13px;border-bottom:1px dashed var(--hair);padding:2px 0;color:var(--ink)}
+  /* tabs */
+  .tabs{display:flex;border:1.6px solid var(--ink);border-radius:8px;overflow:hidden;margin-bottom:18px}
+  .tabbtn{flex:1;background:none;border:none;padding:11px;font-size:13px;font-weight:800;letter-spacing:.08em;
+    text-transform:uppercase;color:var(--ink);cursor:pointer}
+  .tabbtn+.tabbtn{border-left:1.6px solid var(--ink)}
+  .tabbtn.active{background:var(--ink);color:var(--paper)}
+  .hint{font-size:11px;color:var(--gray);margin-top:6px}
   /* stat grid */
   .stats{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:20px}
   .stat{border:1.6px solid var(--ink);border-radius:6px;padding:10px 8px;text-align:center}
@@ -83,6 +90,17 @@
   .jdel{width:100%;margin-top:14px;background:none;border:1.3px solid var(--hair);color:var(--gray);
     border-radius:6px;padding:9px;font-size:12px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;cursor:pointer}
   .jdel:active{border-color:var(--ink);color:var(--ink)}
+  /* ledger (cost tab) */
+  .ledger{margin-top:4px}
+  .lrow{padding:10px 2px;border-bottom:1px solid var(--hair)}
+  .lmain{display:flex;align-items:baseline;gap:8px}
+  .lmain .ld{flex:0 0 auto;color:var(--gray);font-size:12px;width:50px}
+  .lmain .lt{flex:1;min-width:0;font-size:14px;overflow-wrap:anywhere}
+  .lmain .la{flex:0 0 auto;font-weight:700;font-size:14px}
+  .lsub{display:flex;align-items:center;gap:8px;padding-left:58px;margin-top:2px;font-size:11px;color:var(--gray)}
+  .lsub .lr{flex:0 0 auto}
+  .lsub .lb{flex:1;text-align:right}
+  .lsub .lrm{flex:0 0 auto;border:none;background:none;color:var(--gray);font-size:14px;width:18px;cursor:pointer;margin-left:2px}
   /* actions */
   .actions{margin-top:26px;display:flex;flex-direction:column;gap:10px}
   .btn{width:100%;padding:14px;border-radius:7px;font-size:15px;font-weight:700;letter-spacing:.02em;cursor:pointer;text-align:center}
@@ -123,6 +141,7 @@
     .pstable td{padding:4px 6px;border-bottom:1px solid #ddd}
     .pstable td.num{text-align:right;white-space:nowrap}
     .psjtotals{display:flex;gap:16px;margin-top:6px;font-size:11px;font-weight:700}
+    .psstatement{margin-top:24px}
     .psgrand{margin-top:24px;border-top:2px solid #000;padding-top:10px}
     .psgrand table{width:100%;font-size:13px}
     .psgrand td{padding:3px 0}
@@ -144,7 +163,11 @@
   function esc(s){ const d=document.createElement("div"); d.textContent=(s==null?"":String(s)); return d.innerHTML; }
   function uid(){ return Date.now().toString(36)+Math.random().toString(36).slice(2,8); }
   function newProjectId(){ return Math.random().toString(36).slice(2,8)+Math.random().toString(36).slice(2,6); }
-  function money(n){ n = Number(n)||0; return "$"+n.toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2}); }
+  function money(n){
+    n = Number(n)||0;
+    const sign = n<0 ? "-" : "";
+    return sign+"$"+Math.abs(n).toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2});
+  }
   function hrsFmt(n){ n = Number(n)||0; return (Math.round(n*100)/100)+"h"; }
   function todayStr(){ const d=new Date(); return d.toISOString().slice(0,10); }
   function dateFmt(s){
@@ -208,9 +231,10 @@
   let lastLocalWriteAt = 0;
   let saveTimer = null;
   const expanded = new Set();
+  let activeTab = "projects";
 
   function emptyProject(name, client){
-    return { name: name||"Untitled Project", client: client||"", hourlyRate: 0, jobs: [], updatedAt: Date.now() };
+    return { name: name||"Untitled Project", client: client||"", hourlyRate: 0, jobs: [], payments: [], updatedAt: Date.now() };
   }
 
   function jobTotals(job){
@@ -227,6 +251,46 @@
       hours+=t.hours; materials+=t.materials; travel+=t.travel; labor+=t.labor; total+=t.total;
     });
     return { hours, materials, travel, labor, total };
+  }
+
+  function buildLedger(){
+    const rows = [];
+    (project.jobs||[]).forEach(job => {
+      const jt = job.title || "Untitled Job";
+      (job.time||[]).forEach(e => rows.push({
+        id:e.id, date:e.date, kind:"time",
+        desc: jt + (e.desc ? " — "+e.desc : ""),
+        rate: Number(project.hourlyRate)||0,
+        amount: (Number(e.hours)||0) * (Number(project.hourlyRate)||0)
+      }));
+      (job.materials||[]).forEach(e => rows.push({
+        id:e.id, date:e.date, kind:"materials",
+        desc: jt + " — " + (e.desc||"Materials"),
+        rate: null,
+        amount: Number(e.cost)||0
+      }));
+      (job.travel||[]).forEach(e => rows.push({
+        id:e.id, date:e.date, kind:"travel",
+        desc: jt + " — " + (e.desc||"Travel"),
+        rate: null,
+        amount: Number(e.cost)||0
+      }));
+    });
+    (project.payments||[]).forEach(p => rows.push({
+      id:p.id, date:p.date, kind:"payment",
+      desc: p.note || "Payment",
+      rate: null,
+      amount: Number(p.amount)||0
+    }));
+    rows.sort((a,b) => (a.date||"").localeCompare(b.date||"") || String(a.id).localeCompare(String(b.id)));
+    let bal = 0;
+    rows.forEach(r => { bal += r.amount; r.balance = bal; });
+    return rows;
+  }
+  function ledgerTotals(rows){
+    let charged=0, paid=0;
+    rows.forEach(r => { if(r.kind==="payment") paid += -r.amount; else charged += r.amount; });
+    return { charged, paid, balance: charged-paid };
   }
 
   /* ---------- persistence ---------- */
@@ -252,6 +316,7 @@
       if(!snap.exists){ renderError("This project link doesn't exist (it may have been removed)."); return; }
       project = snap.data();
       project.jobs = project.jobs || [];
+      project.payments = project.payments || [];
       lastLocalWriteAt = project.updatedAt || 0;
       if(!isView) saveRecent(id, project.name, project.client, "edit");
       renderAll();
@@ -259,7 +324,7 @@
         if(!doc.exists) return;
         const data = doc.data();
         if((data.updatedAt||0) > lastLocalWriteAt + 400){
-          project = data; project.jobs = project.jobs || [];
+          project = data; project.jobs = project.jobs || []; project.payments = project.payments || [];
           lastLocalWriteAt = data.updatedAt;
           renderAll();
         }
@@ -401,20 +466,8 @@
     '</div>';
   }
 
-  function renderProject(){
-    const totals = projectTotals();
-    const shareUrl = location.origin + location.pathname.replace(/[^/]*$/, "") + "project.html?id=" + projectId + "&view=1";
-
-    let html = '<div class="phead">' +
-      '<div class="eyebrow">'+(isView?"Job Tracker &middot; Shared":"Job Tracker")+'</div>' +
-      (isView
-        ? '<div class="title">'+esc(project.name)+'</div><div class="sub">'+esc(project.client||"")+'</div>'
-        : '<input class="fld" id="pName" value="'+esc(project.name)+'" placeholder="Project name">' +
-          '<input class="fldsub" id="pClient" value="'+esc(project.client||"")+'" placeholder="Client name">' +
-          '<div class="ratebox">Hourly rate $ <input type="number" id="pRate" value="'+(project.hourlyRate||0)+'" step="1" min="0"> /hr</div>') +
-      '</div>';
-
-    html += '<div class="stats">' +
+  function renderProjectsTab(totals){
+    let html = '<div class="stats">' +
       '<div class="stat"><div class="n">'+hrsFmt(totals.hours)+'</div><div class="l">Time</div></div>' +
       '<div class="stat"><div class="n">'+money(totals.materials)+'</div><div class="l">Materials</div></div>' +
       '<div class="stat"><div class="n">'+money(totals.travel)+'</div><div class="l">Travel</div></div>' +
@@ -430,6 +483,76 @@
     } else {
       html += project.jobs.map(renderJob).join("");
     }
+    return html;
+  }
+
+  function ledgerRow(r){
+    const isPayment = r.kind === "payment";
+    return '<div class="lrow" data-ledger="'+r.id+'" data-kind="'+r.kind+'">' +
+      '<div class="lmain">' +
+        '<div class="ld">'+esc(dateFmt(r.date))+'</div>' +
+        '<div class="lt">'+esc(r.desc)+'</div>' +
+        '<div class="la">'+money(r.amount)+'</div>' +
+      '</div>' +
+      '<div class="lsub">' +
+        '<div class="lr">'+(r.rate?esc(money(r.rate))+"/hr":"")+'</div>' +
+        '<div class="lb">Balance '+money(r.balance)+'</div>' +
+        (isPayment && !isView ? '<button class="lrm" data-rmpay="'+r.id+'">×</button>' : '') +
+      '</div>' +
+    '</div>';
+  }
+
+  function renderCostTab(rows, lt){
+    let html = '<div class="stats">' +
+      '<div class="stat"><div class="n">'+money(lt.charged)+'</div><div class="l">Charged</div></div>' +
+      '<div class="stat"><div class="n">'+money(lt.paid)+'</div><div class="l">Paid</div></div>' +
+      '<div class="stat wide"><div class="n">'+money(lt.balance)+'</div><div class="l">Balance Due</div></div>' +
+      '</div>';
+
+    html += '<div class="sechead"><div class="seclabel">Statement</div></div>';
+
+    if(!rows.length){
+      html += '<div class="empty">Nothing logged yet.</div>';
+    } else {
+      html += '<div class="ledger">' + rows.map(ledgerRow).join("") + '</div>';
+    }
+
+    if(!isView){
+      html += '<div class="subsec">' +
+        '<div class="subhead">Add Payment</div>' +
+        '<div class="addrow" id="addPayment">' +
+          '<input type="date" class="idate" id="payDate" value="'+todayStr()+'">' +
+          '<input type="text" class="itext" id="payNote" placeholder="Note (optional)">' +
+          '<input type="number" class="inum" id="payAmt" placeholder="Amount" step="0.01">' +
+          '<button class="iadd" id="addPayBtn">+</button>' +
+        '</div>' +
+        '<div class="hint">Use a negative number for a payment received (e.g. -500).</div>' +
+      '</div>';
+    }
+    return html;
+  }
+
+  function renderProject(){
+    const totals = projectTotals();
+    const ledger = buildLedger();
+    const lt = ledgerTotals(ledger);
+    const shareUrl = location.origin + location.pathname.replace(/[^/]*$/, "") + "project.html?id=" + projectId + "&view=1";
+
+    let html = '<div class="phead">' +
+      '<div class="eyebrow">'+(isView?"Job Tracker &middot; Shared":"Job Tracker")+'</div>' +
+      (isView
+        ? '<div class="title">'+esc(project.name)+'</div><div class="sub">'+esc(project.client||"")+'</div>'
+        : '<input class="fld" id="pName" value="'+esc(project.name)+'" placeholder="Project name">' +
+          '<input class="fldsub" id="pClient" value="'+esc(project.client||"")+'" placeholder="Client name">' +
+          '<div class="ratebox">Hourly rate $ <input type="number" id="pRate" value="'+(project.hourlyRate||0)+'" step="1" min="0"> /hr</div>') +
+      '</div>';
+
+    html += '<div class="tabs">' +
+      '<button class="tabbtn'+(activeTab==="projects"?" active":"")+'" data-tab="projects">Projects</button>' +
+      '<button class="tabbtn'+(activeTab==="cost"?" active":"")+'" data-tab="cost">Cost</button>' +
+      '</div>';
+
+    html += activeTab === "cost" ? renderCostTab(ledger, lt) : renderProjectsTab(totals);
 
     html += '<div class="actions">';
     html += '<button class="btn line" id="printBtn">Print / Save PDF</button>';
@@ -446,11 +569,11 @@
     html += '</div>';
 
     document.getElementById("app").innerHTML = html;
-    renderPrintSheet(totals);
+    renderPrintSheet(ledger, lt);
     wireProjectEvents(shareUrl);
   }
 
-  function renderPrintSheet(totals){
+  function renderPrintSheet(ledger, lt){
     let html = '<div class="psh1">'+esc(project.name)+'</div>' +
       '<div class="psh2">'+esc(project.client||"")+'</div>' +
       '<div class="psmeta">Printed '+esc(new Date().toLocaleDateString())+(project.hourlyRate?(' &middot; Rate '+esc(money(project.hourlyRate))+'/hr'):'')+'</div>';
@@ -482,11 +605,18 @@
       html += '</div>';
     });
 
+    html += '<div class="psstatement"><div class="psjtitle"><span>Account Statement</span><span></span></div>' +
+      '<table class="pstable"><tr><th>Date</th><th>Description</th><th>Rate</th><th>Amount</th><th>Balance</th></tr>' +
+      ledger.map(r => '<tr><td>'+esc(dateFmt(r.date))+'</td><td>'+esc(r.desc)+'</td>' +
+        '<td class="num">'+(r.rate?esc(money(r.rate))+"/hr":"")+'</td>' +
+        '<td class="num">'+esc(money(r.amount))+'</td>' +
+        '<td class="num">'+esc(money(r.balance))+'</td></tr>').join("") +
+      '</table></div>';
+
     html += '<div class="psgrand"><table>' +
-      '<tr><td>Total labor ('+hrsFmt(totals.hours)+')</td><td class="num">'+money(totals.labor)+'</td></tr>' +
-      '<tr><td>Total materials</td><td class="num">'+money(totals.materials)+'</td></tr>' +
-      '<tr><td>Total travel</td><td class="num">'+money(totals.travel)+'</td></tr>' +
-      '<tr><td><b>Grand total</b></td><td class="num">'+money(totals.total)+'</td></tr>' +
+      '<tr><td>Total charged</td><td class="num">'+money(lt.charged)+'</td></tr>' +
+      '<tr><td>Total paid</td><td class="num">'+money(lt.paid)+'</td></tr>' +
+      '<tr><td><b>Balance due</b></td><td class="num">'+money(lt.balance)+'</td></tr>' +
       '</table></div>';
     html += '<div class="psnote">Generated from the shared project tracker.</div>';
 
@@ -507,21 +637,44 @@
       pClient.addEventListener("change", () => { project.client = pClient.value.trim(); saveRecent(projectId, project.name, project.client, "edit"); queueSave(); });
       pRate.addEventListener("change", () => { project.hourlyRate = Math.max(0, Number(pRate.value)||0); queueSave(); });
 
-      document.getElementById("addJob").addEventListener("click", () => {
-        const job = {id: uid(), title:"", status:"planned", notes:"", time:[], materials:[], travel:[]};
-        project.jobs.push(job);
-        expanded.add(job.id);
-        queueSave();
-        setTimeout(() => {
-          const el = document.querySelector('[data-jobtitle="'+job.id+'"]');
-          if(el) el.focus();
-        }, 0);
-      });
+      const addJobBtn = document.getElementById("addJob");
+      if(addJobBtn){
+        addJobBtn.addEventListener("click", () => {
+          const job = {id: uid(), title:"", status:"planned", notes:"", time:[], materials:[], travel:[]};
+          project.jobs.push(job);
+          expanded.add(job.id);
+          queueSave();
+          setTimeout(() => {
+            const el = document.querySelector('[data-jobtitle="'+job.id+'"]');
+            if(el) el.focus();
+          }, 0);
+        });
+      }
 
       document.getElementById("copyShare").addEventListener("click", () => copyText(shareUrl));
+
+      const addPayBtn = document.getElementById("addPayBtn");
+      if(addPayBtn){
+        addPayBtn.addEventListener("click", () => {
+          const date = document.getElementById("payDate").value || todayStr();
+          const note = document.getElementById("payNote").value.trim();
+          const amount = Number(document.getElementById("payAmt").value);
+          if(!amount){ toast("Enter an amount"); return; }
+          project.payments = project.payments || [];
+          project.payments.push({id: uid(), date, note, amount});
+          queueSave();
+        });
+      }
     }
 
     document.getElementById("printBtn").addEventListener("click", () => window.print());
+
+    app.querySelectorAll("[data-tab]").forEach(btn => {
+      btn.addEventListener("click", () => {
+        activeTab = btn.getAttribute("data-tab");
+        renderAll();
+      });
+    });
 
     app.querySelectorAll("[data-jobhead]").forEach(h => {
       h.addEventListener("click", (e) => {
@@ -533,6 +686,14 @@
     });
 
     if(isView) return;
+
+    app.querySelectorAll("[data-rmpay]").forEach(btn => {
+      btn.addEventListener("click", () => {
+        const id = btn.getAttribute("data-rmpay");
+        project.payments = (project.payments||[]).filter(p => p.id !== id);
+        queueSave();
+      });
+    });
 
     app.querySelectorAll("[data-jobtitle]").forEach(inp => {
       inp.addEventListener("click", e => e.stopPropagation());
