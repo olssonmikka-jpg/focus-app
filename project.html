@@ -261,6 +261,7 @@
         id:e.id, date:e.date, kind:"time",
         desc: jt + (e.desc ? " — "+e.desc : ""),
         rate: Number(project.hourlyRate)||0,
+        hours: Number(e.hours)||0,
         amount: (Number(e.hours)||0) * (Number(project.hourlyRate)||0)
       }));
       (job.materials||[]).forEach(e => rows.push({
@@ -486,6 +487,11 @@
     return html;
   }
 
+  function rateLabel(r){
+    if(!r.rate) return "";
+    return esc(money(r.rate))+"/hr"+(r.hours?" &middot; "+esc(hrsFmt(r.hours)):"");
+  }
+
   function ledgerRow(r){
     const isPayment = r.kind === "payment";
     return '<div class="lrow" data-ledger="'+r.id+'" data-kind="'+r.kind+'">' +
@@ -495,7 +501,7 @@
         '<div class="la">'+money(r.amount)+'</div>' +
       '</div>' +
       '<div class="lsub">' +
-        '<div class="lr">'+(r.rate?esc(money(r.rate))+"/hr":"")+'</div>' +
+        '<div class="lr">'+rateLabel(r)+'</div>' +
         '<div class="lb">Balance '+money(r.balance)+'</div>' +
         (isPayment && !isView ? '<button class="lrm" data-rmpay="'+r.id+'">×</button>' : '') +
       '</div>' +
@@ -608,7 +614,7 @@
     html += '<div class="psstatement"><div class="psjtitle"><span>Account Statement</span><span></span></div>' +
       '<table class="pstable"><tr><th>Date</th><th>Description</th><th>Rate</th><th>Amount</th><th>Balance</th></tr>' +
       ledger.map(r => '<tr><td>'+esc(dateFmt(r.date))+'</td><td>'+esc(r.desc)+'</td>' +
-        '<td class="num">'+(r.rate?esc(money(r.rate))+"/hr":"")+'</td>' +
+        '<td class="num">'+rateLabel(r)+'</td>' +
         '<td class="num">'+esc(money(r.amount))+'</td>' +
         '<td class="num">'+esc(money(r.balance))+'</td></tr>').join("") +
       '</table></div>';
