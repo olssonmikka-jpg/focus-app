@@ -35,6 +35,8 @@
   .hint{font-size:11px;color:var(--gray);margin-top:6px}
   /* stat grid */
   .stats{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:20px}
+  .stats.cols3{grid-template-columns:1fr 1fr 1fr}
+  .stats.cols3 .stat .n{font-size:17px}
   .stat{border:1.6px solid var(--ink);border-radius:6px;padding:10px 8px;text-align:center}
   .stat .n{font-size:20px;font-weight:800;overflow-wrap:anywhere}
   .stat .l{font-size:10px;font-weight:700;letter-spacing:.12em;color:var(--gray);text-transform:uppercase;margin-top:2px}
@@ -248,16 +250,15 @@
     const hours = (job.time||[]).reduce((s,e)=>s+(Number(e.hours)||0),0);
     const labor = (job.time||[]).reduce((s,e)=>s+(Number(e.hours)||0)*(Number(e.rate)||0),0);
     const materials = (job.materials||[]).reduce((s,e)=>s+(Number(e.cost)||0),0);
-    const travel = (job.travel||[]).reduce((s,e)=>s+(Number(e.cost)||0),0);
-    return { hours, materials, travel, labor, total: labor+materials+travel };
+    return { hours, materials, labor, total: labor+materials };
   }
   function projectTotals(){
-    let hours=0, materials=0, travel=0, labor=0, total=0;
+    let hours=0, materials=0, labor=0, total=0;
     (project.jobs||[]).forEach(j => {
       const t = jobTotals(j);
-      hours+=t.hours; materials+=t.materials; travel+=t.travel; labor+=t.labor; total+=t.total;
+      hours+=t.hours; materials+=t.materials; labor+=t.labor; total+=t.total;
     });
-    return { hours, materials, travel, labor, total };
+    return { hours, materials, labor, total };
   }
 
   function buildLedger(){
@@ -274,12 +275,6 @@
       (job.materials||[]).forEach(e => rows.push({
         id:e.id, date:e.date, kind:"materials",
         desc: jt + " — " + (e.desc||"Materials"),
-        rate: null,
-        amount: Number(e.cost)||0
-      }));
-      (job.travel||[]).forEach(e => rows.push({
-        id:e.id, date:e.date, kind:"travel",
-        desc: jt + " — " + (e.desc||"Travel"),
         rate: null,
         amount: Number(e.cost)||0
       }));
@@ -354,7 +349,7 @@
   function renderLanding(){
     const recents = getRecents();
     let html = '<div class="phead"><div class="eyebrow">Job Tracker</div><div class="title">Projects</div>' +
-      '<div class="sub">Track jobs, time, materials &amp; travel — share a link with your client.</div></div>';
+      '<div class="sub">Track jobs, time &amp; materials — share a link with your client.</div></div>';
     if(recents.length){
       html += '<div class="plist">' + recents.map(r =>
         '<a class="prow" href="project.html?id='+esc(r.id)+(r.role==="view"?"&view=1":"")+'">' +
@@ -459,7 +454,6 @@
       body += '<div class="jsubstats">' +
         '<span><b>'+hrsFmt(t.hours)+'</b> logged</span>' +
         '<span><b>'+money(t.materials)+'</b> materials</span>' +
-        '<span><b>'+money(t.travel)+'</b> travel</span>' +
         '</div>';
 
       body += renderNotesSection(job);
@@ -491,18 +485,6 @@
       }
       body += '</div>';
 
-      // travel
-      body += '<div class="subsec"><div class="subhead">Travel</div>';
-      body += (job.travel||[]).map(e => entryRow(job,"travel",e)).join("") || (isView?'<div class="empty">No travel logged.</div>':'');
-      if(!isView){
-        body += '<div class="addrow" data-add="travel" data-job="'+job.id+'">' +
-          '<input type="date" class="idate" value="'+todayStr()+'">' +
-          '<input type="text" class="itext" placeholder="Description">' +
-          '<input type="number" class="inum" placeholder="Cost" step="0.01" min="0">' +
-          '<button class="iadd">+</button></div>';
-      }
-      body += '</div>';
-
       if(!isView){
         body += '<button class="jdel" data-deljob="'+job.id+'">Delete Job</button>';
       }
@@ -521,10 +503,9 @@
   }
 
   function renderProjectsTab(totals){
-    let html = '<div class="stats">' +
+    let html = '<div class="stats cols3">' +
       '<div class="stat"><div class="n">'+hrsFmt(totals.hours)+'</div><div class="l">Time</div></div>' +
       '<div class="stat"><div class="n">'+money(totals.materials)+'</div><div class="l">Materials</div></div>' +
-      '<div class="stat"><div class="n">'+money(totals.travel)+'</div><div class="l">Travel</div></div>' +
       '<div class="stat"><div class="n">'+money(totals.labor)+'</div><div class="l">Labor</div></div>' +
       '<div class="stat wide"><div class="n">'+money(totals.total)+'</div><div class="l">Total To Date</div></div>' +
       '</div>';
@@ -648,15 +629,9 @@
           job.materials.map(e=>'<tr><td>'+esc(dateFmt(e.date))+'</td><td>'+esc(e.desc||"")+'</td><td class="num">'+money(e.cost)+'</td></tr>').join("") +
           '</table>';
       }
-      if((job.travel||[]).length){
-        html += '<table class="pstable"><tr><th>Date</th><th>Travel</th><th>Cost</th></tr>' +
-          job.travel.map(e=>'<tr><td>'+esc(dateFmt(e.date))+'</td><td>'+esc(e.desc||"")+'</td><td class="num">'+money(e.cost)+'</td></tr>').join("") +
-          '</table>';
-      }
       html += '<div class="psjtotals">' +
         '<span>Time: '+hrsFmt(t.hours)+' ('+money(t.labor)+')</span>' +
         '<span>Materials: '+money(t.materials)+'</span>' +
-        '<span>Travel: '+money(t.travel)+'</span>' +
         '</div>';
       if((job.notes||[]).length){
         html += '<div class="pstasks">' + job.notes.map(n => '<div>'+esc(n.text)+'</div>').join("") + '</div>';
@@ -700,7 +675,7 @@
       const addJobBtn = document.getElementById("addJob");
       if(addJobBtn){
         addJobBtn.addEventListener("click", () => {
-          const job = {id: uid(), title:"", status:"planned", notes:[], time:[], materials:[], travel:[], tasks:[]};
+          const job = {id: uid(), title:"", status:"planned", notes:[], time:[], materials:[], tasks:[]};
           project.jobs.push(job);
           expanded.add(job.id);
           queueSave();
