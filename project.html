@@ -37,8 +37,6 @@
   .hint{font-size:11px;color:var(--gray);margin-top:6px}
   /* stat grid */
   .stats{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:20px}
-  .stats.cols3{grid-template-columns:1fr 1fr 1fr}
-  .stats.cols3 .stat .n{font-size:17px}
   .stat{border:1.6px solid var(--ink);border-radius:6px;padding:10px 8px;text-align:center}
   .stat .n{font-size:20px;font-weight:800;overflow-wrap:anywhere}
   .stat .l{font-size:10px;font-weight:700;letter-spacing:.12em;color:var(--gray);text-transform:uppercase;margin-top:2px}
@@ -284,14 +282,6 @@
     const labor = (job.time||[]).reduce((s,e)=>s+(Number(e.hours)||0)*(Number(e.rate)||0),0);
     const materials = (job.materials||[]).reduce((s,e)=>s+(Number(e.cost)||0),0);
     return { hours, materials, labor, total: labor+materials };
-  }
-  function projectTotals(){
-    let hours=0, materials=0, labor=0, total=0;
-    (project.jobs||[]).forEach(j => {
-      const t = jobTotals(j);
-      hours+=t.hours; materials+=t.materials; labor+=t.labor; total+=t.total;
-    });
-    return { hours, materials, labor, total };
   }
 
   function buildLedger(){
@@ -539,15 +529,8 @@
     '</div>';
   }
 
-  function renderProjectsTab(totals){
-    let html = '<div class="stats cols3">' +
-      '<div class="stat"><div class="n">'+hrsFmt(totals.hours)+'</div><div class="l">Time</div></div>' +
-      '<div class="stat"><div class="n">'+money(totals.materials)+'</div><div class="l">Materials</div></div>' +
-      '<div class="stat"><div class="n">'+money(totals.labor)+'</div><div class="l">Labor</div></div>' +
-      '<div class="stat wide"><div class="n">'+money(totals.total)+'</div><div class="l">Total To Date</div></div>' +
-      '</div>';
-
-    html += '<div class="sechead"><div class="seclabel">Jobs</div>' +
+  function renderProjectsTab(){
+    let html = '<div class="sechead"><div class="seclabel">Jobs</div>' +
       (isView?'':'<button class="addbtn" id="addJob">+</button>') + '</div>';
 
     if(!project.jobs.length){
@@ -619,7 +602,6 @@
   }
 
   function renderProject(){
-    const totals = projectTotals();
     const ledger = buildLedger();
     const lt = ledgerTotals(ledger);
     const shareUrl = location.origin + location.pathname.replace(/[^/]*$/, "") + "project.html?id=" + projectId + "&view=1";
@@ -636,7 +618,7 @@
       '<button class="tabbtn'+(activeTab==="cost"?" active":"")+'" data-tab="cost">Cost</button>' +
       '</div>';
 
-    html += activeTab === "cost" ? renderCostTab(ledger, lt) : renderProjectsTab(totals);
+    html += activeTab === "cost" ? renderCostTab(ledger, lt) : renderProjectsTab();
 
     html += '<div class="actions">';
     html += '<button class="btn line" id="printBtn">Print / Save PDF</button>';
