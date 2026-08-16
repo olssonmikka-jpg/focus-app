@@ -274,7 +274,7 @@
   let activeTab = "projects";
 
   function emptyProject(name, client){
-    return { name: name||"Untitled Project", client: client||"", jobs: [], payments: [], updatedAt: Date.now() };
+    return { name: name||"Untitled Project", client: client||"", jobs: [], payments: [], notes: [], updatedAt: Date.now() };
   }
 
   function jobTotals(job){
@@ -541,6 +541,31 @@
     return html;
   }
 
+  function projectNoteRow(n){
+    return '<div class="ntrow" data-pnoterow="'+n.id+'">' +
+      (isView
+        ? '<div class="nttext">'+esc(n.text)+'</div>'
+        : '<input class="ntinput" data-pnoteinput="'+n.id+'" value="'+esc(n.text)+'">') +
+      (isView?'':'<button class="ntrm" data-rmpnote="1">&times;</button>') +
+    '</div>';
+  }
+
+  function renderProjectNotesTab(){
+    const notes = project.notes||[];
+    let html = '<div class="sechead"><div class="seclabel">Notes</div></div>';
+    if(!notes.length){
+      html += '<div class="empty">'+(isView?"No notes yet.":"No notes yet — addresses, rates, anything relevant to this project.")+'</div>';
+    } else {
+      html += notes.map(projectNoteRow).join("");
+    }
+    if(!isView){
+      html += '<div class="addrow" data-addprojectnote="1">' +
+        '<input type="text" class="itext" placeholder="Add a note">' +
+        '<button class="iadd">+</button></div>';
+    }
+    return html;
+  }
+
   function qtyFmt(n){ n = Number(n)||0; return Math.round(n*100)/100+""; }
 
   function rateLabel(r){
@@ -616,9 +641,10 @@
     html += '<div class="tabs">' +
       '<button class="tabbtn'+(activeTab==="projects"?" active":"")+'" data-tab="projects">Projects</button>' +
       '<button class="tabbtn'+(activeTab==="cost"?" active":"")+'" data-tab="cost">Cost</button>' +
+      '<button class="tabbtn'+(activeTab==="notes"?" active":"")+'" data-tab="notes">Notes</button>' +
       '</div>';
 
-    html += activeTab === "cost" ? renderCostTab(ledger, lt) : renderProjectsTab();
+    html += activeTab === "cost" ? renderCostTab(ledger, lt) : activeTab === "notes" ? renderProjectNotesTab() : renderProjectsTab();
 
     html += '<div class="actions">';
     html += '<button class="btn line" id="printBtn">Print / Save PDF</button>';
@@ -643,6 +669,10 @@
     let html = '<div class="psh1">'+esc(project.name)+'</div>' +
       '<div class="psh2">'+esc(project.client||"")+'</div>' +
       '<div class="psmeta">Printed '+esc(new Date().toLocaleDateString())+'</div>';
+
+    if((project.notes||[]).length){
+      html += '<div class="pstasks" style="margin-top:14px">' + project.notes.map(n => '<div>'+esc(n.text)+'</div>').join("") + '</div>';
+    }
 
     (project.jobs||[]).forEach(job => {
       const t = jobTotals(job);
@@ -818,6 +848,35 @@
       };
       row.querySelector(".iadd").addEventListener("click", add);
       input.addEventListener("keydown", e => { if(e.key === "Enter"){ e.preventDefault(); add(); } });
+    });
+
+    app.querySelectorAll("[data-pnoteinput]").forEach(inp => {
+      inp.addEventListener("click", e => e.stopPropagation());
+      inp.addEventListener("change", () => {
+        const note = (project.notes||[]).find(n => n.id === inp.getAttribute("data-pnoteinput"));
+        if(note){ note.text = inp.value.trim(); queueSave(); }
+      });
+    });
+
+    app.querySelectorAll("[data-rmpnote]").forEach(btn => {
+      btn.addEventListener("click", () => {
+        const row = btn.closest(".ntrow");
+        project.notes = (project.notes||[]).filter(n => n.id !== row.getAttribute("data-pnoterow"));
+        queueSave();
+      });
+    });
+
+    app.querySelectorAll("[data-addprojectnote]").forEach(row => {
+      const input2 = row.querySelector(".itext");
+      const add2 = () => {
+        const text = input2.value.trim();
+        if(!text) return;
+        project.notes = project.notes || [];
+        project.notes.push({id: uid(), text});
+        queueSave();
+      };
+      row.querySelector(".iadd").addEventListener("click", add2);
+      input2.addEventListener("keydown", e => { if(e.key === "Enter"){ e.preventDefault(); add2(); } });
     });
 
     app.querySelectorAll("[data-fileupload]").forEach(inp => {
