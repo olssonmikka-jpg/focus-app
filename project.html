@@ -282,7 +282,8 @@
     (project.payments||[]).forEach(p => rows.push({
       id:p.id, date:p.date, kind:"payment",
       desc: p.note || "Payment",
-      rate: null,
+      rate: p.rate!=null ? Number(p.rate) : null,
+      units: p.units!=null ? Number(p.units) : null,
       amount: Number(p.amount)||0
     }));
     rows.sort((a,b) => (a.date||"").localeCompare(b.date||"") || String(a.id).localeCompare(String(b.id)));
@@ -292,7 +293,7 @@
   }
   function ledgerTotals(rows){
     let charged=0, paid=0;
-    rows.forEach(r => { if(r.kind==="payment") paid += -r.amount; else charged += r.amount; });
+    rows.forEach(r => { if(r.amount < 0) paid += -r.amount; else charged += r.amount; });
     return { charged, paid, balance: charged-paid };
   }
 
@@ -521,9 +522,17 @@
     return html;
   }
 
+  function qtyFmt(n){ n = Number(n)||0; return Math.round(n*100)/100+""; }
+
   function rateLabel(r){
-    if(!r.rate) return "";
-    return esc(money(r.rate))+"/hr"+(r.hours?" &middot; "+esc(hrsFmt(r.hours)):"");
+    if(r.kind === "time"){
+      if(!r.rate) return "";
+      return esc(money(r.rate))+"/hr"+(r.hours?" &middot; "+esc(hrsFmt(r.hours)):"");
+    }
+    if(r.units!=null && r.rate!=null){
+      return esc(qtyFmt(r.units))+" @ "+esc(money(r.rate));
+    }
+    return "";
   }
 
   function ledgerRow(r){
@@ -563,10 +572,11 @@
         '<div class="addrow" id="addPayment">' +
           '<input type="date" class="idate" id="payDate" value="'+todayStr()+'">' +
           '<input type="text" class="itext" id="payNote" placeholder="Note (optional)">' +
-          '<input type="number" class="inum" id="payAmt" placeholder="Amount" step="0.01">' +
+          '<input type="number" class="inum" id="payQty" placeholder="Qty" step="0.25" value="1">' +
+          '<input type="number" class="inum" id="payRate" placeholder="Rate $" step="0.01">' +
           '<button class="iadd" id="addPayBtn">+</button>' +
         '</div>' +
-        '<div class="hint">Use a negative number for a payment received (e.g. -500).</div>' +
+        '<div class="hint">Amount = Qty &times; Rate (e.g. 5 @ $75, or 1 @ $567). For a payment received, use a negative rate (e.g. 1 @ -500).</div>' +
       '</div>';
     }
     return html;
@@ -693,10 +703,12 @@
         addPayBtn.addEventListener("click", () => {
           const date = document.getElementById("payDate").value || todayStr();
           const note = document.getElementById("payNote").value.trim();
-          const amount = Number(document.getElementById("payAmt").value);
-          if(!amount){ toast("Enter an amount"); return; }
+          const units = Number(document.getElementById("payQty").value) || 1;
+          const rate = Number(document.getElementById("payRate").value);
+          if(!rate){ toast("Enter a rate"); return; }
+          const amount = units * rate;
           project.payments = project.payments || [];
-          project.payments.push({id: uid(), date, note, amount});
+          project.payments.push({id: uid(), date, note, amount, units, rate});
           queueSave();
         });
       }
