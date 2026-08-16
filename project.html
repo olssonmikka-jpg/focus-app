@@ -8,7 +8,9 @@
 <title>Project Tracker</title>
 <script defer src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js"></script>
 <script defer src="https://www.gstatic.com/firebasejs/10.14.1/firebase-auth-compat.js"></script>
-<script defer src="https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore-compat.js"></script><style>
+<script defer src="https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore-compat.js"></script>
+<script defer src="https://www.gstatic.com/firebasejs/10.14.1/firebase-storage-compat.js"></script>
+<style>
   :root{
     --paper:#FAFAF8; --ink:#141414; --gray:#8a8a86; --hair:#e3e3df; --faint:#f0f0ec;
   }
@@ -84,6 +86,13 @@
   .jdel{width:100%;margin-top:14px;background:none;border:1.3px solid var(--hair);color:var(--gray);
     border-radius:6px;padding:9px;font-size:12px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;cursor:pointer}
   .jdel:active{border-color:var(--ink);color:var(--ink)}
+  /* file icon (per-line attachment) */
+  .fileicon{position:relative;flex:0 0 auto;width:22px;height:22px;display:inline-flex;align-items:center;
+    justify-content:center;color:var(--gray);cursor:pointer;text-decoration:none}
+  .fileicon svg{width:14px;height:14px}
+  .fileicon:active{color:var(--ink)}
+  .fileicon.linked{color:var(--ink)}
+  .fileicon input{position:absolute;inset:0;opacity:0;cursor:pointer}
   /* notes */
   .ntrow{display:flex;align-items:center;gap:8px;padding:8px 2px;border-bottom:1px solid var(--hair)}
   .ntinput{flex:1;min-width:0;font-size:14px;padding:2px 0;border-bottom:1.5px dashed transparent}
@@ -171,6 +180,16 @@
   /* ---------- helpers ---------- */
   function esc(s){ const d=document.createElement("div"); d.textContent=(s==null?"":String(s)); return d.innerHTML; }
   function uid(){ return Date.now().toString(36)+Math.random().toString(36).slice(2,8); }
+  const CLIP_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.44 11.05L12.25 20.24a6 6 0 01-8.49-8.49L12.75 2.56a4 4 0 015.66 5.66L9.5 17.13a2 2 0 01-2.83-2.83l8.49-8.48"/></svg>';
+  const LINK_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>';
+  function fileIconHtml(kind, jobId, itemId, file){
+    if(file && file.url){
+      return '<a class="fileicon linked" href="'+esc(file.url)+'" target="_blank" rel="noopener" title="'+esc(file.name)+'" onclick="event.stopPropagation()">'+LINK_SVG+'</a>';
+    }
+    if(isView) return '';
+    return '<label class="fileicon" data-filekind="'+kind+'" data-job="'+jobId+'" data-item="'+itemId+'" onclick="event.stopPropagation()">'+CLIP_SVG+
+      '<input type="file" data-fileupload="1"></label>';
+  }
   function newProjectId(){ return Math.random().toString(36).slice(2,8)+Math.random().toString(36).slice(2,6); }
   function money(n){
     n = Number(n)||0;
@@ -222,6 +241,20 @@
     return fbReady;
   }
   function projRef(id){ return firebase.firestore().collection("clientProjects").doc(id); }
+
+  async function uploadFile(file, jobId){
+    const ok = await ensureFirebase();
+    if(!ok) return null;
+    const id = uid();
+    const path = "projects/"+projectId+"/"+jobId+"/"+id+"_"+file.name;
+    const ref = firebase.storage().ref(path);
+    await ref.put(file);
+    const url = await ref.getDownloadURL();
+    return { id, name: file.name, url, path };
+  }
+  async function deleteFile(path){
+    try{ await firebase.storage().ref(path).delete(); }catch(e){}
+  }
 
   /* ---------- recents (local index of projects this browser knows about) ---------- */
   const RECENTS_KEY = "cp-recents";
@@ -397,6 +430,7 @@
       '<div class="ed">'+esc(dateFmt(e.date))+'</div>' +
       '<div class="et">'+desc+'</div>' +
       '<div class="ev">'+val+'</div>' +
+      (kind==="materials" ? fileIconHtml("material", job.id, e.id, e.file) : "") +
       (isView ? '' : '<button class="erm" data-rm="1">×</button>') +
       '</div>';
   }
@@ -406,6 +440,7 @@
       (isView
         ? '<div class="nttext">'+esc(n.text)+'</div>'
         : '<input class="ntinput" data-noteinput="'+n.id+'" value="'+esc(n.text)+'">') +
+      fileIconHtml("note", job.id, n.id, n.file) +
       (isView?'':'<button class="ntrm" data-rmnote="1">&times;</button>') +
     '</div>';
   }
@@ -428,6 +463,7 @@
     return '<div class="trow'+(t.done?" done":"")+'" data-taskrow="'+t.id+'" data-job="'+job.id+'">' +
       '<div class="tbox"'+(isView?"":' data-taskbox="1"')+'>'+(t.done?"&#10003;":"")+'</div>' +
       '<div class="ttext">'+esc(t.text)+'</div>' +
+      fileIconHtml("task", job.id, t.id, t.file) +
       (isView?'':'<button class="trm" data-rmtask="1">&times;</button>') +
     '</div>';
   }
@@ -800,6 +836,26 @@
       };
       row.querySelector(".iadd").addEventListener("click", add);
       input.addEventListener("keydown", e => { if(e.key === "Enter"){ e.preventDefault(); add(); } });
+    });
+
+    app.querySelectorAll("[data-fileupload]").forEach(inp => {
+      inp.addEventListener("click", e => e.stopPropagation());
+      inp.addEventListener("change", async () => {
+        const label = inp.closest(".fileicon");
+        const kind = label.getAttribute("data-filekind");
+        const jobId = label.getAttribute("data-job");
+        const itemId = label.getAttribute("data-item");
+        const job = findJob(jobId); if(!job) return;
+        const file = inp.files && inp.files[0];
+        if(!file) return;
+        const arr = kind==="task" ? job.tasks : kind==="note" ? job.notes : job.materials;
+        const item = (arr||[]).find(x => x.id === itemId);
+        if(!item) return;
+        toast("Uploading…");
+        const uploaded = await uploadFile(file, jobId);
+        if(uploaded){ item.file = uploaded; queueSave(); toast("Uploaded"); }
+        else { toast("Upload failed — check connection"); }
+      });
     });
 
     app.querySelectorAll("[data-deljob]").forEach(btn => {
