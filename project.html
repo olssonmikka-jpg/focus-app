@@ -307,7 +307,8 @@
       desc: p.note || "Payment",
       rate: p.rate!=null ? Number(p.rate) : null,
       units: p.units!=null ? Number(p.units) : null,
-      amount: Number(p.amount)||0
+      amount: Number(p.amount)||0,
+      file: p.file
     }));
     rows.sort((a,b) => (a.date||"").localeCompare(b.date||"") || String(a.id).localeCompare(String(b.id)));
     let bal = 0;
@@ -590,6 +591,7 @@
       '<div class="lsub">' +
         '<div class="lr">'+rateLabel(r)+'</div>' +
         '<div class="lb">Balance '+money(r.balance)+'</div>' +
+        (isPayment ? fileIconHtml("payment", "_project", r.id, r.file) : '') +
         (isPayment && !isView ? '<button class="lrm" data-rmpay="'+r.id+'">×</button>' : '') +
       '</div>' +
     '</div>';
@@ -886,10 +888,15 @@
         const kind = label.getAttribute("data-filekind");
         const jobId = label.getAttribute("data-job");
         const itemId = label.getAttribute("data-item");
-        const job = findJob(jobId); if(!job) return;
         const file = inp.files && inp.files[0];
         if(!file) return;
-        const arr = kind==="task" ? job.tasks : kind==="note" ? job.notes : job.materials;
+        let arr;
+        if(kind==="payment"){
+          arr = project.payments;
+        } else {
+          const job = findJob(jobId); if(!job) return;
+          arr = kind==="task" ? job.tasks : kind==="note" ? job.notes : job.materials;
+        }
         const item = (arr||[]).find(x => x.id === itemId);
         if(!item) return;
         toast("Uploading…");
