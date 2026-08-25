@@ -580,6 +580,44 @@
     return "";
   }
 
+  function rateLabelPlain(r){
+    if(r.kind === "time"){
+      if(!r.rate) return "";
+      return money(r.rate)+"/hr"+(r.hours?" · "+hrsFmt(r.hours):"");
+    }
+    if(r.units!=null && r.rate!=null){
+      return qtyFmt(r.units)+" @ "+money(r.rate);
+    }
+    return "";
+  }
+
+  function csvCell(v){
+    const s = String(v==null?"":v);
+    return /[",\r\n]/.test(s) ? '"'+s.replace(/"/g,'""')+'"' : s;
+  }
+
+  function downloadStatementCSV(rows, lt){
+    const lines = [["Date","Description","Rate","Amount","Balance"].map(csvCell).join(",")];
+    rows.forEach(r => {
+      lines.push([dateFmt(r.date)||r.date, r.desc, rateLabelPlain(r), r.amount.toFixed(2), r.balance.toFixed(2)].map(csvCell).join(","));
+    });
+    lines.push("");
+    lines.push(["","","Total Charged","",lt.charged.toFixed(2)].map(csvCell).join(","));
+    lines.push(["","","Total Paid","",lt.paid.toFixed(2)].map(csvCell).join(","));
+    lines.push(["","","Balance Due","",lt.balance.toFixed(2)].map(csvCell).join(","));
+
+    const blob = new Blob(["﻿"+lines.join("\r\n")], {type:"text/csv;charset=utf-8;"});
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    const safeName = (project.name||"Project").replace(/[\\/:*?"<>|]/g,"-");
+    a.href = url;
+    a.download = safeName+" - Cost Statement.csv";
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    setTimeout(()=>URL.revokeObjectURL(url), 1000);
+  }
+
   function ledgerRow(r){
     const isPayment = r.kind === "payment";
     return '<div class="lrow" data-ledger="'+r.id+'" data-kind="'+r.kind+'">' +
@@ -610,6 +648,7 @@
       html += '<div class="empty">Nothing logged yet.</div>';
     } else {
       html += '<div class="ledger">' + rows.map(ledgerRow).join("") + '</div>';
+      html += '<button class="btn line" id="downloadCsvBtn" style="margin-top:14px">Download Statement (Excel)</button>';
     }
 
     if(!isView){
@@ -765,6 +804,14 @@
     }
 
     document.getElementById("printBtn").addEventListener("click", () => window.print());
+
+    const downloadCsvBtn = document.getElementById("downloadCsvBtn");
+    if(downloadCsvBtn){
+      downloadCsvBtn.addEventListener("click", () => {
+        const rows = buildLedger();
+        downloadStatementCSV(rows, ledgerTotals(rows));
+      });
+    }
 
     app.querySelectorAll("[data-tab]").forEach(btn => {
       btn.addEventListener("click", () => {
