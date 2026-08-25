@@ -648,7 +648,6 @@
       html += '<div class="empty">Nothing logged yet.</div>';
     } else {
       html += '<div class="ledger">' + rows.map(ledgerRow).join("") + '</div>';
-      html += '<button class="btn line" id="downloadCsvBtn" style="margin-top:14px">Download Statement (Excel)</button>';
     }
 
     if(!isView){
@@ -688,6 +687,9 @@
     html += activeTab === "cost" ? renderCostTab(ledger, lt) : activeTab === "notes" ? renderProjectNotesTab() : renderProjectsTab();
 
     html += '<div class="actions">';
+    if(activeTab === "cost" && ledger.length){
+      html += '<button class="btn line" id="downloadCsvBtn">Download Statement (Excel)</button>';
+    }
     html += '<button class="btn line" id="printBtn">Print / Save PDF</button>';
     if(!isView){
       html += '<div class="sharebox">' +
