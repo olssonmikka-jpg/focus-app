@@ -1,0 +1,408 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="theme-color" content="#141414">
+<title>Medical Log</title>
+<script defer src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js"></script>
+<script defer src="https://www.gstatic.com/firebasejs/10.14.1/firebase-auth-compat.js"></script>
+<script defer src="https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore-compat.js"></script>
+<script defer src="https://www.gstatic.com/firebasejs/10.14.1/firebase-storage-compat.js"></script>
+<style>
+  :root{
+    --paper:#FAFAF8; --ink:#141414; --gray:#8a8a86; --hair:#e3e3df; --faint:#f0f0ec;
+  }
+  *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+  html,body{background:var(--paper)}
+  body{
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    color:var(--ink);min-height:100vh;
+  }
+  #app{max-width:640px;margin:0 auto;padding:calc(env(safe-area-inset-top,0px) + 20px) 18px 60px}
+  input,textarea,select{font-family:inherit;color:var(--ink);background:transparent;outline:none;border:none}
+  .eyebrow{font-size:12px;font-weight:700;letter-spacing:.18em;color:var(--gray);text-transform:uppercase}
+  .title{font-size:30px;font-weight:800;letter-spacing:-.01em;line-height:1.15;margin-top:2px}
+  .sub{font-size:14px;color:var(--gray);margin-top:4px;line-height:1.4}
+  .phead{padding-bottom:14px;border-bottom:2px solid var(--ink);margin-bottom:18px}
+  .fld{width:100%;font-size:20px;font-weight:800;border-bottom:1.5px dashed var(--hair);padding:4px 0}
+  .fld:focus{border-color:var(--ink)}
+  .hint{font-size:11px;color:var(--gray);margin-top:6px}
+  .center{text-align:center;color:var(--gray);font-size:14px;padding:40px 0}
+  .empty{padding:16px 2px;font-size:13px;color:var(--gray);font-style:italic}
+  /* setup screen */
+  .setupbox{border:1.6px dashed var(--ink);border-radius:8px;padding:16px;margin-top:16px}
+  .setupbox input{display:block;width:100%;font-size:16px;border-bottom:1.3px solid var(--hair);padding:9px 2px;margin-bottom:12px}
+  .setupbox input:focus{border-color:var(--ink)}
+  .btn{width:100%;padding:14px;border-radius:7px;font-size:15px;font-weight:700;letter-spacing:.02em;cursor:pointer;text-align:center}
+  .btn.primary{background:var(--ink);color:var(--paper);border:none;text-transform:uppercase}
+  .btn.line{background:none;border:1.4px solid var(--ink);color:var(--ink)}
+  .btn:active{opacity:.8}
+  /* search + add */
+  .search{width:100%;font-size:16px;padding:11px 12px;border:1.5px solid var(--hair);border-radius:8px;
+    background:#fff;margin-bottom:16px}
+  .search:focus{border-color:var(--ink)}
+  .sechead{display:flex;align-items:center;justify-content:space-between;padding-bottom:6px;
+    border-bottom:1.5px solid var(--ink);margin-bottom:2px}
+  .seclabel{font-size:13px;font-weight:800;letter-spacing:.14em;text-transform:uppercase}
+  .addbtn{border:none;background:none;color:var(--gray);font-size:20px;font-weight:600;width:32px;height:28px;cursor:pointer}
+  .addbtn:active{color:var(--ink)}
+  /* entry cards */
+  .entry{border:1.6px solid var(--ink);border-radius:8px;margin-top:12px;overflow:hidden}
+  .ehead{display:flex;flex-direction:column;gap:4px;padding:12px;cursor:pointer}
+  .ehrow1{display:flex;align-items:center;gap:10px}
+  .edate{flex:0 0 auto;font-size:15px;font-weight:800}
+  .epill{flex:0 1 auto;font-size:10px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;
+    border:1.3px solid var(--hair);border-radius:20px;padding:3px 9px;color:var(--gray);
+    overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .chev{flex:0 0 auto;font-size:11px;color:var(--gray);transition:transform .15s;margin-left:auto}
+  .entry.open .chev{transform:rotate(180deg)}
+  .edoc{font-size:14px;font-weight:700;overflow-wrap:anywhere}
+  .einst{font-size:12px;color:var(--gray);overflow-wrap:anywhere}
+  .ebody{display:none;border-top:1px solid var(--hair);padding:14px}
+  .entry.open .ebody{display:block}
+  .fgroup{margin-top:14px}
+  .fgroup:first-child{margin-top:0}
+  .flabel{font-size:11px;font-weight:800;letter-spacing:.1em;color:var(--gray);text-transform:uppercase;
+    margin-bottom:5px;display:flex;align-items:center;justify-content:space-between}
+  .finput{width:100%;font-size:15px;border:1.3px solid var(--hair);border-radius:6px;padding:9px 10px;background:#fff}
+  .finput:focus{border-color:var(--ink)}
+  textarea.finput{min-height:70px;resize:vertical;line-height:1.4}
+  .followrow{display:flex;align-items:center;gap:8px}
+  .followrow .finput{flex:1}
+  .edel{width:100%;margin-top:16px;background:none;border:1.3px solid var(--hair);color:var(--gray);
+    border-radius:6px;padding:9px;font-size:12px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;cursor:pointer}
+  .edel:active{border-color:var(--ink);color:var(--ink)}
+  /* file icon (per-entry attachment) */
+  .fileicon{position:relative;flex:0 0 auto;width:22px;height:22px;display:inline-flex;align-items:center;
+    justify-content:center;color:var(--gray);cursor:pointer;text-decoration:none}
+  .fileicon svg{width:14px;height:14px}
+  .fileicon:active{color:var(--ink)}
+  .fileicon.linked{color:var(--ink)}
+  .fileicon input{position:absolute;inset:0;opacity:0;cursor:pointer}
+  .footlink{display:block;text-align:center;margin-top:26px;font-size:12px;color:var(--gray);
+    background:none;border:none;text-decoration:underline;cursor:pointer;width:100%}
+  .toast{position:fixed;left:50%;bottom:28px;transform:translateX(-50%);background:var(--ink);color:var(--paper);
+    padding:10px 18px;border-radius:20px;font-size:13px;font-weight:600;opacity:0;pointer-events:none;
+    transition:opacity .2s,transform .2s;z-index:50}
+  .toast.show{opacity:1;transform:translateX(-50%) translateY(-4px)}
+</style>
+</head>
+<body>
+<div id="app"><div class="center">Loading…</div></div>
+<div class="toast" id="toast"></div>
+
+<script>
+(function(){
+  "use strict";
+
+  /* ---------- helpers ---------- */
+  function esc(s){ const d=document.createElement("div"); d.textContent=(s==null?"":String(s)); return d.innerHTML; }
+  function uid(){ return Date.now().toString(36)+Math.random().toString(36).slice(2,8); }
+  function todayStr(){ const d=new Date(); return d.toISOString().slice(0,10); }
+  function dateFmt(s){
+    if(!s) return "";
+    const p = s.split("-"); if(p.length!==3) return s;
+    const d = new Date(+p[0], +p[1]-1, +p[2]);
+    return d.toLocaleDateString(undefined, {year:"numeric", month:"short", day:"numeric"});
+  }
+  let toastTimer = null;
+  function toast(msg){
+    const el = document.getElementById("toast");
+    el.textContent = msg; el.classList.add("show");
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(()=>el.classList.remove("show"), 2000);
+  }
+  const CLIP_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.44 11.05L12.25 20.24a6 6 0 01-8.49-8.49L12.75 2.56a4 4 0 015.66 5.66L9.5 17.13a2 2 0 01-2.83-2.83l8.49-8.48"/></svg>';
+  const LINK_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>';
+  function fileIconHtml(entryId, file){
+    if(file && file.url){
+      return '<a class="fileicon linked" href="'+esc(file.url)+'" target="_blank" rel="noopener" title="'+esc(file.name)+'" onclick="event.stopPropagation()">'+LINK_SVG+'</a>';
+    }
+    return '<label class="fileicon" data-entry="'+entryId+'" onclick="event.stopPropagation()">'+CLIP_SVG+
+      '<input type="file" data-fileupload="1"></label>';
+  }
+
+  /* ---------- firebase ---------- */
+  const FIREBASE_CONFIG = {
+    apiKey: "AIzaSyCQwd7wLx5iLNjwaeQD9JaFORJFbrleIsU",
+    authDomain: "focus-app-5be8b.firebaseapp.com",
+    projectId: "focus-app-5be8b",
+    storageBucket: "focus-app-5be8b.firebasestorage.app",
+    messagingSenderId: "749902078589",
+    appId: "1:749902078589:web:cb8435eafcb7524d870714"
+  };
+  let fbReady = null;
+  async function ensureFirebase(){
+    if(fbReady) return fbReady;
+    fbReady = (async () => {
+      if(typeof firebase === "undefined") throw new Error("no sdk");
+      firebase.initializeApp(FIREBASE_CONFIG);
+      await firebase.auth().signInAnonymously();
+      return true;
+    })().catch(() => null);
+    return fbReady;
+  }
+  async function hashCode(code){
+    const buf = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(code.trim().toLowerCase()));
+    return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2,"0")).join("");
+  }
+  function logRef(hash){ return firebase.firestore().collection("medicalLog").doc(hash); }
+  async function uploadFile(file, entryId){
+    const ok = await ensureFirebase();
+    if(!ok) return null;
+    const id = uid();
+    const path = "medicalFiles/"+logHash+"/"+entryId+"/"+id+"_"+file.name;
+    const ref = firebase.storage().ref(path);
+    await ref.put(file);
+    const url = await ref.getDownloadURL();
+    return { id, name: file.name, url, path };
+  }
+
+  /* ---------- state ---------- */
+  const PASS_KEY = "medlog-passphrase";
+  let logHash = null;
+  let log = null;
+  let lastLocalWriteAt = 0;
+  let saveTimer = null;
+  let searchQuery = "";
+  const expanded = new Set();
+
+  const VISIT_TYPES = ["Annual Checkup","Follow-up","Urgent Care","Specialist","Lab Work","Imaging","Telehealth","Emergency Room","Physical Therapy","Dental","Vision"];
+
+  function queueSave(){
+    log.updatedAt = Date.now();
+    lastLocalWriteAt = log.updatedAt;
+    renderAll();
+    clearTimeout(saveTimer);
+    saveTimer = setTimeout(doSave, 500);
+  }
+  async function doSave(){
+    const ok = await ensureFirebase();
+    if(!ok){ toast("Can't reach sync — check connection"); return; }
+    try{ await logRef(logHash).set(log); }
+    catch(e){ toast("Save failed — will retry"); setTimeout(doSave, 3000); }
+  }
+
+  async function openLog(passphrase){
+    document.getElementById("app").innerHTML = '<div class="center">Loading…</div>';
+    const ok = await ensureFirebase();
+    if(!ok){ renderError("Couldn't connect. Check your internet connection and reload."); return; }
+    try{
+      const hash = await hashCode(passphrase);
+      logHash = hash;
+      const ref = logRef(hash);
+      const snap = await ref.get();
+      if(snap.exists){
+        log = snap.data();
+        log.entries = log.entries || [];
+      } else {
+        log = { entries: [], updatedAt: Date.now() };
+        await ref.set(log);
+      }
+      lastLocalWriteAt = log.updatedAt || 0;
+      renderAll();
+      ref.onSnapshot(doc => {
+        if(!doc.exists) return;
+        const data = doc.data();
+        if((data.updatedAt||0) > lastLocalWriteAt + 400){
+          log = data; log.entries = log.entries || [];
+          lastLocalWriteAt = data.updatedAt;
+          renderAll();
+        }
+      });
+    }catch(e){ renderError("Couldn't load your log. Check your internet connection and reload."); }
+  }
+
+  function renderError(msg){
+    document.getElementById("app").innerHTML =
+      '<div class="phead"><div class="eyebrow">Medical Log</div><div class="title">Medical Log</div></div>' +
+      '<div class="center">'+esc(msg)+'</div>';
+  }
+
+  /* ---------- setup screen (passphrase) ---------- */
+  function renderSetup(){
+    document.getElementById("app").innerHTML =
+      '<div class="phead"><div class="eyebrow">New</div><div class="title">Medical Log</div>' +
+      '<div class="sub">A private place to track doctor visits, notes, and records.</div></div>' +
+      '<div class="setupbox">' +
+        '<input id="passInput" type="password" placeholder="Create a passphrase">' +
+        '<button class="btn primary" id="passGo">Continue</button>' +
+        '<div class="hint">This keeps your log private — it\'s not tied to an account. Remember it: you\'ll need the exact same passphrase to open this log on another device. There\'s no recovery if you forget it.</div>' +
+      '</div>';
+    document.getElementById("passGo").addEventListener("click", () => {
+      const val = document.getElementById("passInput").value;
+      if(!val.trim()){ toast("Enter a passphrase"); return; }
+      localStorage.setItem(PASS_KEY, val.trim());
+      openLog(val.trim());
+    });
+    document.getElementById("passInput").addEventListener("keydown", e => {
+      if(e.key === "Enter") document.getElementById("passGo").click();
+    });
+  }
+
+  /* ---------- entries ---------- */
+  function matchesSearch(e, q){
+    if(!q) return true;
+    const hay = [e.doctor, e.institution, e.visitType, e.notes, e.medications].join(" ").toLowerCase();
+    return hay.includes(q);
+  }
+
+  function entryRow(e){
+    const open = expanded.has(e.id);
+    let body = "";
+    if(open){
+      body =
+        '<div class="fgroup"><label class="flabel">Date</label>' +
+          '<input type="date" class="finput" data-field="date" data-entry="'+e.id+'" value="'+esc(e.date||"")+'"></div>' +
+        '<div class="fgroup"><label class="flabel">Doctor</label>' +
+          '<input type="text" class="finput" data-field="doctor" data-entry="'+e.id+'" value="'+esc(e.doctor||"")+'" placeholder="Dr. Jane Smith"></div>' +
+        '<div class="fgroup"><label class="flabel">Institution</label>' +
+          '<input type="text" class="finput" data-field="institution" data-entry="'+e.id+'" value="'+esc(e.institution||"")+'" placeholder="Clinic / hospital name"></div>' +
+        '<div class="fgroup"><label class="flabel">Visit Type</label>' +
+          '<input type="text" class="finput" list="visitTypes" data-field="visitType" data-entry="'+e.id+'" value="'+esc(e.visitType||"")+'" placeholder="Annual Checkup, Follow-up…"></div>' +
+        '<div class="fgroup"><label class="flabel">Visit Notes</label>' +
+          '<textarea class="finput" data-field="notes" data-entry="'+e.id+'" placeholder="What happened, what was discussed…">'+esc(e.notes||"")+'</textarea></div>' +
+        '<div class="fgroup"><label class="flabel">Medications</label>' +
+          '<textarea class="finput" data-field="medications" data-entry="'+e.id+'" placeholder="Prescribed or changed at this visit">'+esc(e.medications||"")+'</textarea></div>' +
+        '<div class="fgroup"><label class="flabel">Follow-up</label>' +
+          '<div class="followrow">' +
+            '<input type="date" class="finput" data-field="followUp" data-entry="'+e.id+'" value="'+esc(e.followUp||"")+'">' +
+          '</div></div>' +
+        '<div class="fgroup"><div class="flabel">Attachment '+fileIconHtml(e.id, e.file)+'</div></div>' +
+        '<button class="edel" data-delentry="'+e.id+'">Delete Entry</button>';
+    }
+    const pill = e.visitType ? '<div class="epill">'+esc(e.visitType)+'</div>' : '';
+    return '<div class="entry'+(open?" open":"")+'" data-entrycard="'+e.id+'">' +
+      '<div class="ehead" data-entryhead="'+e.id+'">' +
+        '<div class="ehrow1">' +
+          '<div class="edate">'+esc(dateFmt(e.date))+'</div>' +
+          pill +
+          '<div class="chev">&#9660;</div>' +
+        '</div>' +
+        '<div class="edoc">'+esc(e.doctor||"Untitled visit")+'</div>' +
+        (e.institution ? '<div class="einst">'+esc(e.institution)+'</div>' : '') +
+      '</div>' +
+      '<div class="ebody">'+body+'</div>' +
+    '</div>';
+  }
+
+  function renderMain(){
+    const sorted = [...(log.entries||[])].sort((a,b) => (b.date||"").localeCompare(a.date||"") || String(b.id).localeCompare(String(a.id)));
+    const q = searchQuery.trim().toLowerCase();
+    const visible = sorted.filter(e => matchesSearch(e, q));
+
+    let html = '<div class="phead"><div class="eyebrow">Medical Log</div><div class="title">Medical Log</div></div>';
+    html += '<input type="search" class="search" id="searchInput" placeholder="Search doctor, institution, notes…" value="'+esc(searchQuery)+'">';
+    html += '<div class="sechead"><div class="seclabel">Entries</div><button class="addbtn" id="addEntry">+</button></div>';
+
+    if(!sorted.length){
+      html += '<div class="empty">No entries yet — add your first visit.</div>';
+    } else if(!visible.length){
+      html += '<div class="empty">No entries match your search.</div>';
+    } else {
+      html += visible.map(entryRow).join("");
+    }
+
+    html += '<datalist id="visitTypes">' + VISIT_TYPES.map(t => '<option value="'+esc(t)+'">').join("") + '</datalist>';
+    html += '<button class="footlink" id="changePass">Change passphrase / switch log</button>';
+
+    document.getElementById("app").innerHTML = html;
+    wireMainEvents();
+  }
+
+  function renderAll(){ renderMain(); }
+
+  function findEntry(id){ return (log.entries||[]).find(e => e.id === id); }
+
+  function wireMainEvents(){
+    const app = document.getElementById("app");
+
+    const searchInput = document.getElementById("searchInput");
+    searchInput.addEventListener("input", () => {
+      searchQuery = searchInput.value;
+      renderMain();
+      const el = document.getElementById("searchInput");
+      el.focus(); el.setSelectionRange(el.value.length, el.value.length);
+    });
+
+    document.getElementById("addEntry").addEventListener("click", () => {
+      const entry = {id: uid(), date: todayStr(), doctor:"", institution:"", visitType:"", notes:"", medications:"", followUp:"", file:null};
+      log.entries = log.entries || [];
+      log.entries.push(entry);
+      expanded.add(entry.id);
+      queueSave();
+      setTimeout(() => {
+        const el = document.querySelector('[data-field="doctor"][data-entry="'+entry.id+'"]');
+        if(el) el.focus();
+      }, 0);
+    });
+
+    document.getElementById("changePass").addEventListener("click", () => {
+      const val = prompt("Enter a passphrase to open a log (a new one if it doesn't exist yet, or an existing one from another device):", "");
+      if(val === null || !val.trim()) return;
+      localStorage.setItem(PASS_KEY, val.trim());
+      expanded.clear();
+      openLog(val.trim());
+    });
+
+    app.querySelectorAll("[data-entryhead]").forEach(h => {
+      h.addEventListener("click", e => {
+        if(e.target.closest("input,textarea,a,label")) return;
+        const id = h.getAttribute("data-entryhead");
+        if(expanded.has(id)) expanded.delete(id); else expanded.add(id);
+        renderMain();
+      });
+    });
+
+    app.querySelectorAll("[data-field]").forEach(inp => {
+      inp.addEventListener("click", e => e.stopPropagation());
+      inp.addEventListener("change", () => {
+        const entry = findEntry(inp.getAttribute("data-entry"));
+        if(!entry) return;
+        entry[inp.getAttribute("data-field")] = inp.value.trim();
+        queueSave();
+      });
+    });
+
+    app.querySelectorAll("[data-delentry]").forEach(btn => {
+      btn.addEventListener("click", e => {
+        e.stopPropagation();
+        const id = btn.getAttribute("data-delentry");
+        const entry = findEntry(id);
+        if(!entry) return;
+        if(!confirm('Delete this entry ('+(dateFmt(entry.date)||"undated")+' — '+(entry.doctor||"untitled")+')?')) return;
+        log.entries = log.entries.filter(x => x.id !== id);
+        expanded.delete(id);
+        queueSave();
+      });
+    });
+
+    app.querySelectorAll("[data-fileupload]").forEach(inp => {
+      inp.addEventListener("click", e => e.stopPropagation());
+      inp.addEventListener("change", async () => {
+        const label = inp.closest(".fileicon");
+        const entryId = label.getAttribute("data-entry");
+        const entry = findEntry(entryId);
+        if(!entry) return;
+        const file = inp.files && inp.files[0];
+        if(!file) return;
+        toast("Uploading…");
+        const uploaded = await uploadFile(file, entryId);
+        if(uploaded){ entry.file = uploaded; queueSave(); toast("Uploaded"); }
+        else { toast("Upload failed — check connection"); }
+      });
+    });
+  }
+
+  /* ---------- boot ---------- */
+  document.addEventListener("DOMContentLoaded", () => {
+    const saved = localStorage.getItem(PASS_KEY);
+    if(saved) openLog(saved);
+    else renderSetup();
+  });
+})();
+</script>
+</body>
+</html>
