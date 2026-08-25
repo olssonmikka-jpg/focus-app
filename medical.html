@@ -224,12 +224,12 @@
   /* ---------- setup screen (passphrase) ---------- */
   function renderSetup(){
     document.getElementById("app").innerHTML =
-      '<div class="phead"><div class="eyebrow">New</div><div class="title">Medical Log</div>' +
-      '<div class="sub">A private place to track doctor visits, notes, and records.</div></div>' +
+      '<div class="phead"><div class="eyebrow">Private</div><div class="title">Medical Log</div>' +
+      '<div class="sub">This browser doesn\'t have a passphrase saved. Enter your existing one to open your log here too, or type a new one to start a fresh log.</div></div>' +
       '<div class="setupbox">' +
-        '<input id="passInput" type="password" placeholder="Create a passphrase">' +
+        '<input id="passInput" type="password" placeholder="Your passphrase">' +
         '<button class="btn primary" id="passGo">Continue</button>' +
-        '<div class="hint">This keeps your log private — it\'s not tied to an account. Remember it: you\'ll need the exact same passphrase to open this log on another device. There\'s no recovery if you forget it.</div>' +
+        '<div class="hint">The same passphrase always opens the same log — it\'s not tied to an account. Remember it: there\'s no recovery if you forget it.</div>' +
       '</div>';
     document.getElementById("passGo").addEventListener("click", () => {
       const val = document.getElementById("passInput").value;
