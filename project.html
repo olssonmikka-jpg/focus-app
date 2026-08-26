@@ -120,6 +120,9 @@
   .lcrow .lct{flex:1;min-width:0;overflow-wrap:anywhere}
   .lcrow .lca{flex:0 0 auto;font-weight:700}
   .lcrm{flex:0 0 auto;border:none;background:none;color:var(--gray);font-size:14px;width:18px;cursor:pointer}
+  .lccat{border:none;background:none;color:var(--gray);font-size:11px;font-weight:700;letter-spacing:.03em;
+    text-transform:uppercase;cursor:pointer;padding:2px 0}
+  .lccat:focus{color:var(--ink)}
   /* actions */
   .actions{margin-top:26px;display:flex;flex-direction:column;gap:10px}
   .btn{width:100%;padding:14px;border-radius:7px;font-size:15px;font-weight:700;letter-spacing:.02em;cursor:pointer;text-align:center}
@@ -660,8 +663,14 @@
   function ledgerRowCondensed(r){
     const isPayment = r.kind === "payment";
     const rl = rateLabel(r);
+    const catSelect = (isPayment && !isView)
+      ? ' <select class="lccat" data-catentry="'+r.id+'" onclick="event.stopPropagation()">' +
+          '<option value="nonlabor"'+(r.category!=="labor"?" selected":"")+'>Non-Labor</option>' +
+          '<option value="labor"'+(r.category==="labor"?" selected":"")+'>Labor</option>' +
+        '</select>'
+      : '';
     return '<div class="lcrow" data-ledger="'+r.id+'" data-kind="'+r.kind+'">' +
-      '<div class="lct">'+esc(r.desc)+(rl?' <span class="edim">&middot; '+rl+'</span>':'')+'</div>' +
+      '<div class="lct">'+esc(r.desc)+(rl?' <span class="edim">&middot; '+rl+'</span>':'')+catSelect+'</div>' +
       (isPayment ? fileIconHtml("payment", "_project", r.id, r.file) : '') +
       (isPayment && !isView ? '<button class="lcrm" data-rmpay="'+r.id+'">×</button>' : '') +
       '<div class="lca">'+money(r.amount)+'</div>' +
@@ -893,6 +902,15 @@
       btn.addEventListener("click", () => {
         const id = btn.getAttribute("data-rmpay");
         project.payments = (project.payments||[]).filter(p => p.id !== id);
+        queueSave();
+      });
+    });
+
+    app.querySelectorAll("[data-catentry]").forEach(sel => {
+      sel.addEventListener("change", () => {
+        const payment = (project.payments||[]).find(p => p.id === sel.getAttribute("data-catentry"));
+        if(!payment) return;
+        payment.category = sel.value;
         queueSave();
       });
     });
