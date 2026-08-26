@@ -669,14 +669,6 @@
       '<div class="stat wide"><div class="n">'+money(lt.balance)+'</div><div class="l">Balance Due</div></div>' +
       '</div>';
 
-    html += '<div class="sechead"><div class="seclabel">Statement</div></div>';
-
-    if(!rows.length){
-      html += '<div class="empty">Nothing logged yet.</div>';
-    } else {
-      html += '<div class="ledger">' + groupLedgerByDay(rows).map(dayGroupHtml).join("") + '</div>';
-    }
-
     if(!isView){
       html += '<div class="subsec">' +
         '<div class="subhead">Add Payment</div>' +
@@ -689,6 +681,14 @@
         '</div>' +
         '<div class="hint">Amount = Qty &times; Rate (e.g. 5 @ $75, or 1 @ $567). For a payment received, use a negative rate (e.g. 1 @ -500).</div>' +
       '</div>';
+    }
+
+    html += '<div class="sechead"><div class="seclabel">Statement</div></div>';
+
+    if(!rows.length){
+      html += '<div class="empty">Nothing logged yet.</div>';
+    } else {
+      html += '<div class="ledger">' + groupLedgerByDay(rows).map(dayGroupHtml).join("") + '</div>';
     }
     return html;
   }
