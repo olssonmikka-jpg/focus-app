@@ -639,10 +639,10 @@
     });
     const groups = [];
     byDate.forEach(bucket => {
-      const work = bucket.rows.filter(r => r.kind !== "payment");
-      const pay = bucket.rows.filter(r => r.kind === "payment");
-      if(work.length) groups.push({date: bucket.date, rows: work, total: work.reduce((s,r)=>s+r.amount,0)});
-      if(pay.length) groups.push({date: bucket.date, rows: pay, total: pay.reduce((s,r)=>s+r.amount,0)});
+      const charges = bucket.rows.filter(r => r.amount >= 0);
+      const pays = bucket.rows.filter(r => r.amount < 0);
+      if(charges.length) groups.push({date: bucket.date, rows: charges, total: charges.reduce((s,r)=>s+r.amount,0)});
+      if(pays.length) groups.push({date: bucket.date, rows: pays, total: pays.reduce((s,r)=>s+r.amount,0)});
     });
     return groups;
   }
