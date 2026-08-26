@@ -105,17 +105,18 @@
   .ttext{flex:1;min-width:0;font-size:14px;overflow-wrap:anywhere}
   .trow.done .ttext{color:var(--gray);text-decoration:line-through}
   .trm{flex:0 0 auto;border:none;background:none;color:var(--gray);font-size:15px;width:20px;cursor:pointer}
-  /* ledger (cost tab) */
+  /* ledger (cost tab), grouped by day */
   .ledger{margin-top:4px}
-  .lrow{padding:10px 2px;border-bottom:1px solid var(--hair)}
-  .lmain{display:flex;align-items:baseline;gap:8px}
-  .lmain .ld{flex:0 0 auto;color:var(--gray);font-size:12px;width:50px}
-  .lmain .lt{flex:1;min-width:0;font-size:14px;overflow-wrap:anywhere}
-  .lmain .la{flex:0 0 auto;font-weight:700;font-size:14px}
-  .lsub{display:flex;align-items:center;gap:8px;padding-left:58px;margin-top:2px;font-size:11px;color:var(--gray)}
-  .lsub .lr{flex:0 0 auto}
-  .lsub .lb{flex:1;text-align:right}
-  .lsub .lrm{flex:0 0 auto;border:none;background:none;color:var(--gray);font-size:14px;width:18px;cursor:pointer;margin-left:2px}
+  .dayhead{display:flex;align-items:baseline;justify-content:space-between;flex-wrap:wrap;
+    gap:6px 14px;padding:10px 2px 6px;border-bottom:1.5px solid var(--ink);margin-top:20px}
+  .dayhead:first-child{margin-top:0}
+  .dayname{font-size:13px;font-weight:800}
+  .daytotals{font-size:12px;font-weight:800;display:flex;gap:12px}
+  .daybody{margin-bottom:2px}
+  .lcrow{display:flex;align-items:center;gap:8px;padding:7px 2px;border-bottom:1px solid var(--hair);font-size:13px}
+  .lcrow .lct{flex:1;min-width:0;overflow-wrap:anywhere}
+  .lcrow .lca{flex:0 0 auto;font-weight:700}
+  .lcrm{flex:0 0 auto;border:none;background:none;color:var(--gray);font-size:14px;width:18px;cursor:pointer}
   /* actions */
   .actions{margin-top:26px;display:flex;flex-direction:column;gap:10px}
   .btn{width:100%;padding:14px;border-radius:7px;font-size:15px;font-weight:700;letter-spacing:.02em;cursor:pointer;text-align:center}
@@ -618,21 +619,48 @@
     setTimeout(()=>URL.revokeObjectURL(url), 1000);
   }
 
-  function ledgerRow(r){
+  function dayHeaderFmt(s){
+    if(!s) return "Undated";
+    const p = s.split("-"); if(p.length!==3) return s;
+    const d = new Date(+p[0], +p[1]-1, +p[2]);
+    return d.toLocaleDateString(undefined, {weekday:"long", month:"long", day:"numeric"});
+  }
+
+  function groupLedgerByDay(rows){
+    const groups = [];
+    let current = null;
+    rows.forEach(r => {
+      if(!current || current.date !== r.date){
+        current = {date: r.date, rows: [], labor: 0, material: 0};
+        groups.push(current);
+      }
+      current.rows.push(r);
+      if(r.kind === "time") current.labor += r.amount;
+      if(r.kind === "materials") current.material += r.amount;
+    });
+    return groups;
+  }
+
+  function ledgerRowCondensed(r){
     const isPayment = r.kind === "payment";
-    return '<div class="lrow" data-ledger="'+r.id+'" data-kind="'+r.kind+'">' +
-      '<div class="lmain">' +
-        '<div class="ld">'+esc(dateFmt(r.date))+'</div>' +
-        '<div class="lt">'+esc(r.desc)+'</div>' +
-        '<div class="la">'+money(r.amount)+'</div>' +
-      '</div>' +
-      '<div class="lsub">' +
-        '<div class="lr">'+rateLabel(r)+'</div>' +
-        '<div class="lb">Balance '+money(r.balance)+'</div>' +
-        (isPayment ? fileIconHtml("payment", "_project", r.id, r.file) : '') +
-        (isPayment && !isView ? '<button class="lrm" data-rmpay="'+r.id+'">×</button>' : '') +
-      '</div>' +
+    const rl = rateLabel(r);
+    return '<div class="lcrow" data-ledger="'+r.id+'" data-kind="'+r.kind+'">' +
+      '<div class="lct">'+esc(r.desc)+(rl?' <span class="edim">&middot; '+rl+'</span>':'')+'</div>' +
+      '<div class="lca">'+money(r.amount)+'</div>' +
+      (isPayment ? fileIconHtml("payment", "_project", r.id, r.file) : '') +
+      (isPayment && !isView ? '<button class="lcrm" data-rmpay="'+r.id+'">×</button>' : '') +
     '</div>';
+  }
+
+  function dayGroupHtml(g){
+    let totals = '';
+    if(g.labor) totals += '<span>Labor '+money(g.labor)+'</span>';
+    if(g.material) totals += '<span>Material '+money(g.material)+'</span>';
+    return '<div class="dayhead">' +
+      '<div class="dayname">'+esc(dayHeaderFmt(g.date))+'</div>' +
+      (totals ? '<div class="daytotals">'+totals+'</div>' : '') +
+    '</div>' +
+    '<div class="daybody">' + g.rows.map(ledgerRowCondensed).join("") + '</div>';
   }
 
   function renderCostTab(rows, lt){
@@ -647,7 +675,7 @@
     if(!rows.length){
       html += '<div class="empty">Nothing logged yet.</div>';
     } else {
-      html += '<div class="ledger">' + rows.map(ledgerRow).join("") + '</div>';
+      html += '<div class="ledger">' + groupLedgerByDay(rows).map(dayGroupHtml).join("") + '</div>';
     }
 
     if(!isView){
