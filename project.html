@@ -47,6 +47,11 @@
   .seclabel{font-size:13px;font-weight:800;letter-spacing:.14em;text-transform:uppercase}
   .addbtn{border:none;background:none;color:var(--gray);font-size:20px;font-weight:600;width:32px;height:28px;cursor:pointer}
   .addbtn:active{color:var(--ink)}
+  .mtoggle{flex:0 0 auto;display:flex;border:1.3px solid var(--ink);border-radius:6px;overflow:hidden}
+  .mtbtn{background:none;border:none;padding:5px 10px;font-size:10px;font-weight:800;letter-spacing:.06em;
+    text-transform:uppercase;color:var(--ink);cursor:pointer}
+  .mtbtn+.mtbtn{border-left:1.3px solid var(--ink)}
+  .mtbtn.active{background:var(--ink);color:var(--paper)}
   .empty{padding:16px 2px;font-size:13px;color:var(--gray);font-style:italic}
   .job{border:1.6px solid var(--ink);border-radius:8px;margin-top:12px;overflow:hidden}
   .jhead{display:flex;align-items:center;gap:10px;padding:12px 12px;cursor:pointer}
@@ -74,11 +79,12 @@
   .erow .ev{flex:0 0 auto;font-weight:700}
   .erow .erm{flex:0 0 auto;border:none;background:none;color:var(--gray);font-size:15px;width:22px;cursor:pointer}
   .addrow{display:flex;flex-wrap:wrap;gap:8px;padding:10px 2px 2px;align-items:center}
-  .addrow input{border:1.3px solid var(--hair);border-radius:5px;padding:8px 9px;font-size:14px;background:#fff}
-  .addrow input:focus{border-color:var(--ink)}
+  .addrow input,.addrow select{border:1.3px solid var(--hair);border-radius:5px;padding:8px 9px;font-size:14px;background:#fff}
+  .addrow input:focus,.addrow select:focus{border-color:var(--ink)}
   .addrow .idate{flex:0 0 auto;width:132px}
   .addrow .inum{flex:0 0 auto;width:76px}
   .addrow .itext{flex:1 1 120px;min-width:100px}
+  .addrow .icat{flex:0 0 auto;width:112px}
   .addrow .iadd{flex:0 0 auto;background:var(--ink);color:var(--paper);border:none;border-radius:5px;
     width:36px;height:36px;font-size:18px;font-weight:700;cursor:pointer}
   .jdel{width:100%;margin-top:14px;background:none;border:1.3px solid var(--hair);color:var(--gray);
@@ -273,6 +279,7 @@
   let saveTimer = null;
   const expanded = new Set();
   let activeTab = "projects";
+  let costFilter = "labor";
 
   function emptyProject(name, client){
     return { name: name||"Untitled Project", client: client||"", jobs: [], payments: [], notes: [], updatedAt: Date.now() };
@@ -294,13 +301,15 @@
         desc: jt + (e.desc ? " — "+e.desc : ""),
         rate: Number(e.rate)||0,
         hours: Number(e.hours)||0,
-        amount: (Number(e.hours)||0) * (Number(e.rate)||0)
+        amount: (Number(e.hours)||0) * (Number(e.rate)||0),
+        category: "labor"
       }));
       (job.materials||[]).forEach(e => rows.push({
         id:e.id, date:e.date, kind:"materials",
         desc: jt + " — " + (e.desc||"Materials"),
         rate: null,
-        amount: Number(e.cost)||0
+        amount: Number(e.cost)||0,
+        category: "nonlabor"
       }));
     });
     (project.payments||[]).forEach(p => rows.push({
@@ -309,7 +318,8 @@
       rate: p.rate!=null ? Number(p.rate) : null,
       units: p.units!=null ? Number(p.units) : null,
       amount: Number(p.amount)||0,
-      file: p.file
+      file: p.file,
+      category: p.category === "labor" ? "labor" : "nonlabor"
     }));
     rows.sort((a,b) => (a.date||"").localeCompare(b.date||"") || String(a.id).localeCompare(String(b.id)));
     let bal = 0;
@@ -678,18 +688,28 @@
           '<input type="text" class="itext" id="payNote" placeholder="Note (optional)">' +
           '<input type="number" class="inum" id="payQty" placeholder="Qty" step="0.25" value="1">' +
           '<input type="number" class="inum" id="payRate" placeholder="Rate $" step="0.01">' +
+          '<select class="icat" id="payCategory">' +
+            '<option value="nonlabor">Non-Labor</option>' +
+            '<option value="labor">Labor</option>' +
+          '</select>' +
           '<button class="iadd" id="addPayBtn">+</button>' +
         '</div>' +
         '<div class="hint">Amount = Qty &times; Rate (e.g. 5 @ $75, or 1 @ $567). For a payment received, use a negative rate (e.g. 1 @ -500).</div>' +
       '</div>';
     }
 
-    html += '<div class="sechead"><div class="seclabel">Statement</div></div>';
+    html += '<div class="sechead"><div class="seclabel">Statement</div>' +
+      '<div class="mtoggle">' +
+        '<button class="mtbtn'+(costFilter==="labor"?" active":"")+'" data-costfilter="labor">Labor</button>' +
+        '<button class="mtbtn'+(costFilter==="nonlabor"?" active":"")+'" data-costfilter="nonlabor">Non-Labor</button>' +
+      '</div>' +
+    '</div>';
 
-    if(!rows.length){
-      html += '<div class="empty">Nothing logged yet.</div>';
+    const filtered = rows.filter(r => r.category === costFilter);
+    if(!filtered.length){
+      html += '<div class="empty">'+(rows.length?"Nothing "+(costFilter==="labor"?"labor":"non-labor")+" logged yet.":"Nothing logged yet.")+'</div>';
     } else {
-      html += '<div class="ledger">' + groupLedgerByDay(rows).map(dayGroupHtml).join("") + '</div>';
+      html += '<div class="ledger">' + groupLedgerByDay(filtered).map(dayGroupHtml).join("") + '</div>';
     }
     return html;
   }
@@ -824,10 +844,11 @@
           const note = document.getElementById("payNote").value.trim();
           const units = Number(document.getElementById("payQty").value) || 1;
           const rate = Number(document.getElementById("payRate").value);
+          const category = document.getElementById("payCategory").value;
           if(!rate){ toast("Enter a rate"); return; }
           const amount = units * rate;
           project.payments = project.payments || [];
-          project.payments.push({id: uid(), date, note, amount, units, rate});
+          project.payments.push({id: uid(), date, note, amount, units, rate, category});
           queueSave();
         });
       }
@@ -846,6 +867,13 @@
     app.querySelectorAll("[data-tab]").forEach(btn => {
       btn.addEventListener("click", () => {
         activeTab = btn.getAttribute("data-tab");
+        renderAll();
+      });
+    });
+
+    app.querySelectorAll("[data-costfilter]").forEach(btn => {
+      btn.addEventListener("click", () => {
+        costFilter = btn.getAttribute("data-costfilter");
         renderAll();
       });
     });
