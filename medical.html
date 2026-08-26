@@ -100,7 +100,10 @@
   /* ---------- helpers ---------- */
   function esc(s){ const d=document.createElement("div"); d.textContent=(s==null?"":String(s)); return d.innerHTML; }
   function uid(){ return Date.now().toString(36)+Math.random().toString(36).slice(2,8); }
-  function todayStr(){ const d=new Date(); return d.toISOString().slice(0,10); }
+  function todayStr(){
+    const d = new Date();
+    return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0");
+  }
   function dateFmt(s){
     if(!s) return "";
     const p = s.split("-"); if(p.length!==3) return s;

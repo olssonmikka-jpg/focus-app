@@ -193,7 +193,10 @@
     return sign+"$"+Math.abs(n).toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2});
   }
   function hrsFmt(n){ n = Number(n)||0; return (Math.round(n*100)/100)+"h"; }
-  function todayStr(){ const d=new Date(); return d.toISOString().slice(0,10); }
+  function todayStr(){
+    const d = new Date();
+    return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0");
+  }
   function dateFmt(s){
     if(!s) return "";
     const p = s.split("-"); if(p.length!==3) return s;
