@@ -314,6 +314,7 @@
     rows.sort((a,b) => (a.date||"").localeCompare(b.date||"") || String(a.id).localeCompare(String(b.id)));
     let bal = 0;
     rows.forEach(r => { bal += r.amount; r.balance = bal; });
+    rows.reverse();
     return rows;
   }
   function ledgerTotals(rows){
