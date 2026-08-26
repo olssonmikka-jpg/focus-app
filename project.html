@@ -107,11 +107,8 @@
   .trm{flex:0 0 auto;border:none;background:none;color:var(--gray);font-size:15px;width:20px;cursor:pointer}
   /* ledger (cost tab), grouped by day */
   .ledger{margin-top:4px}
-  .dayhead{display:flex;align-items:baseline;justify-content:space-between;flex-wrap:wrap;
-    gap:6px 14px;padding:10px 2px 6px;border-bottom:1.5px solid var(--ink);margin-top:20px}
+  .dayhead{font-size:13px;font-weight:800;padding:10px 2px 6px;border-bottom:1.5px solid var(--ink);margin-top:20px}
   .dayhead:first-child{margin-top:0}
-  .dayname{font-size:13px;font-weight:800}
-  .daytotals{font-size:12px;font-weight:800;display:flex;gap:12px}
   .daybody{margin-bottom:2px}
   .lcrow{display:flex;align-items:center;gap:8px;padding:7px 2px;border-bottom:1px solid var(--hair);font-size:13px}
   .lcrow .lct{flex:1;min-width:0;overflow-wrap:anywhere}
@@ -627,16 +624,21 @@
   }
 
   function groupLedgerByDay(rows){
-    const groups = [];
+    const byDate = [];
     let current = null;
     rows.forEach(r => {
       if(!current || current.date !== r.date){
-        current = {date: r.date, rows: [], labor: 0, material: 0};
-        groups.push(current);
+        current = {date: r.date, rows: []};
+        byDate.push(current);
       }
       current.rows.push(r);
-      if(r.kind === "time") current.labor += r.amount;
-      if(r.kind === "materials") current.material += r.amount;
+    });
+    const groups = [];
+    byDate.forEach(bucket => {
+      const work = bucket.rows.filter(r => r.kind !== "payment");
+      const pay = bucket.rows.filter(r => r.kind === "payment");
+      if(work.length) groups.push({date: bucket.date, rows: work, total: work.reduce((s,r)=>s+r.amount,0)});
+      if(pay.length) groups.push({date: bucket.date, rows: pay, total: pay.reduce((s,r)=>s+r.amount,0)});
     });
     return groups;
   }
@@ -646,20 +648,14 @@
     const rl = rateLabel(r);
     return '<div class="lcrow" data-ledger="'+r.id+'" data-kind="'+r.kind+'">' +
       '<div class="lct">'+esc(r.desc)+(rl?' <span class="edim">&middot; '+rl+'</span>':'')+'</div>' +
-      '<div class="lca">'+money(r.amount)+'</div>' +
       (isPayment ? fileIconHtml("payment", "_project", r.id, r.file) : '') +
       (isPayment && !isView ? '<button class="lcrm" data-rmpay="'+r.id+'">×</button>' : '') +
+      '<div class="lca">'+money(r.amount)+'</div>' +
     '</div>';
   }
 
   function dayGroupHtml(g){
-    let totals = '';
-    if(g.labor) totals += '<span>Labor '+money(g.labor)+'</span>';
-    if(g.material) totals += '<span>Material '+money(g.material)+'</span>';
-    return '<div class="dayhead">' +
-      '<div class="dayname">'+esc(dayHeaderFmt(g.date))+'</div>' +
-      (totals ? '<div class="daytotals">'+totals+'</div>' : '') +
-    '</div>' +
+    return '<div class="dayhead">'+esc(dayHeaderFmt(g.date))+' &mdash; '+money(g.total)+'</div>' +
     '<div class="daybody">' + g.rows.map(ledgerRowCondensed).join("") + '</div>';
   }
 
