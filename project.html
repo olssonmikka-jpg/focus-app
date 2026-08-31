@@ -195,6 +195,18 @@
     return '<label class="fileicon" data-filekind="'+kind+'" data-job="'+jobId+'" data-item="'+itemId+'" onclick="event.stopPropagation()">'+CLIP_SVG+
       '<input type="file" data-fileupload="1"></label>';
   }
+  function findUrl(text){
+    const m = String(text||"").match(/(https?:\/\/[^\s]+|www\.[^\s]+)/i);
+    if(!m) return null;
+    let url = m[0].replace(/[),.;:!?'"]+$/, "");
+    if(!/^https?:\/\//i.test(url)) url = "https://" + url;
+    return url;
+  }
+  function urlIconHtml(text){
+    const url = findUrl(text);
+    if(!url) return '';
+    return '<a class="fileicon linked" href="'+esc(url)+'" target="_blank" rel="noopener" title="Open link" onclick="event.stopPropagation()">'+LINK_SVG+'</a>';
+  }
   function newProjectId(){ return Math.random().toString(36).slice(2,8)+Math.random().toString(36).slice(2,6); }
   function money(n){
     n = Number(n)||0;
@@ -446,6 +458,7 @@
       (isView
         ? '<div class="nttext">'+esc(n.text)+'</div>'
         : '<input class="ntinput" data-noteinput="'+n.id+'" value="'+esc(n.text)+'">') +
+      urlIconHtml(n.text) +
       fileIconHtml("note", job.id, n.id, n.file) +
       (isView?'':'<button class="ntrm" data-rmnote="1">&times;</button>') +
     '</div>';
@@ -562,6 +575,7 @@
       (isView
         ? '<div class="nttext">'+esc(n.text)+'</div>'
         : '<input class="ntinput" data-pnoteinput="'+n.id+'" value="'+esc(n.text)+'">') +
+      urlIconHtml(n.text) +
       (isView?'':'<button class="ntrm" data-rmpnote="1">&times;</button>') +
     '</div>';
   }
