@@ -43,6 +43,11 @@
   .search{width:100%;font-size:16px;padding:11px 12px;border:1.5px solid var(--hair);border-radius:8px;
     background:#fff;margin-bottom:16px}
   .search:focus{border-color:var(--ink)}
+  .tabs{display:flex;border:1.6px solid var(--ink);border-radius:8px;overflow:hidden;margin-bottom:18px}
+  .tabbtn{flex:1;background:none;border:none;padding:11px;font-size:13px;font-weight:800;letter-spacing:.08em;
+    text-transform:uppercase;color:var(--ink);cursor:pointer}
+  .tabbtn+.tabbtn{border-left:1.6px solid var(--ink)}
+  .tabbtn.active{background:var(--ink);color:var(--paper)}
   .sechead{display:flex;align-items:center;justify-content:space-between;padding-bottom:6px;
     border-bottom:1.5px solid var(--ink);margin-bottom:2px}
   .seclabel{font-size:13px;font-weight:800;letter-spacing:.14em;text-transform:uppercase}
@@ -56,6 +61,8 @@
   .epill{flex:0 1 auto;font-size:10px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;
     border:1.3px solid var(--hair);border-radius:20px;padding:3px 9px;color:var(--gray);
     overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .epill.mstat{cursor:pointer;color:var(--ink);border:1.3px solid var(--ink)}
+  .epill.mstat.discontinued{color:var(--gray);border-style:dashed;border-color:var(--gray)}
   .chev{flex:0 0 auto;font-size:11px;color:var(--gray);transition:transform .15s;margin-left:auto}
   .entry.open .chev{transform:rotate(180deg)}
   .edoc{font-size:14px;font-weight:700;overflow-wrap:anywhere}
@@ -119,11 +126,11 @@
   }
   const CLIP_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.44 11.05L12.25 20.24a6 6 0 01-8.49-8.49L12.75 2.56a4 4 0 015.66 5.66L9.5 17.13a2 2 0 01-2.83-2.83l8.49-8.48"/></svg>';
   const LINK_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>';
-  function fileIconHtml(entryId, file){
+  function fileIconHtml(kind, itemId, file){
     if(file && file.url){
       return '<a class="fileicon linked" href="'+esc(file.url)+'" target="_blank" rel="noopener" title="'+esc(file.name)+'" onclick="event.stopPropagation()">'+LINK_SVG+'</a>';
     }
-    return '<label class="fileicon" data-entry="'+entryId+'" onclick="event.stopPropagation()">'+CLIP_SVG+
+    return '<label class="fileicon" data-filekind="'+kind+'" data-entry="'+itemId+'" onclick="event.stopPropagation()">'+CLIP_SVG+
       '<input type="file" data-fileupload="1"></label>';
   }
 
@@ -171,6 +178,7 @@
   let saveTimer = null;
   let searchQuery = "";
   const expanded = new Set();
+  let activeTab = "visits";
 
   const VISIT_TYPES = ["Annual Checkup","Follow-up","Urgent Care","Specialist","Lab Work","Imaging","Telehealth","Emergency Room","Physical Therapy","Dental","Vision"];
 
@@ -200,8 +208,9 @@
       if(snap.exists){
         log = snap.data();
         log.entries = log.entries || [];
+        log.medications = log.medications || [];
       } else {
-        log = { entries: [], updatedAt: Date.now() };
+        log = { entries: [], medications: [], updatedAt: Date.now() };
         await ref.set(log);
       }
       lastLocalWriteAt = log.updatedAt || 0;
@@ -210,7 +219,7 @@
         if(!doc.exists) return;
         const data = doc.data();
         if((data.updatedAt||0) > lastLocalWriteAt + 400){
-          log = data; log.entries = log.entries || [];
+          log = data; log.entries = log.entries || []; log.medications = log.medications || [];
           lastLocalWriteAt = data.updatedAt;
           renderAll();
         }
@@ -273,7 +282,7 @@
           '<div class="followrow">' +
             '<input type="date" class="finput" data-field="followUp" data-entry="'+e.id+'" value="'+esc(e.followUp||"")+'">' +
           '</div></div>' +
-        '<div class="fgroup"><div class="flabel">Attachment '+fileIconHtml(e.id, e.file)+'</div></div>' +
+        '<div class="fgroup"><div class="flabel">Attachment '+fileIconHtml("visit", e.id, e.file)+'</div></div>' +
         '<button class="edel" data-delentry="'+e.id+'">Delete Entry</button>';
     }
     const pill = e.visitType ? '<div class="epill">'+esc(e.visitType)+'</div>' : '';
@@ -291,24 +300,95 @@
     '</div>';
   }
 
-  function renderMain(){
+  function renderVisitsSection(){
     const sorted = [...(log.entries||[])].sort((a,b) => (b.date||"").localeCompare(a.date||"") || String(b.id).localeCompare(String(a.id)));
     const q = searchQuery.trim().toLowerCase();
     const visible = sorted.filter(e => matchesSearch(e, q));
 
-    let html = '<div class="phead"><div class="eyebrow">Medical Log</div><div class="title">Medical Log</div></div>';
-    html += '<input type="search" class="search" id="searchInput" placeholder="Search doctor, institution, notes…" value="'+esc(searchQuery)+'">';
-    html += '<div class="sechead"><div class="seclabel">Entries</div><button class="addbtn" id="addEntry">+</button></div>';
+    let html = '<input type="search" class="search" id="searchInput" placeholder="Search doctor, institution, notes…" value="'+esc(searchQuery)+'">';
+    html += '<div class="sechead"><div class="seclabel">Visits</div><button class="addbtn" id="addEntry">+</button></div>';
 
     if(!sorted.length){
-      html += '<div class="empty">No entries yet — add your first visit.</div>';
+      html += '<div class="empty">No visits yet — add your first one.</div>';
     } else if(!visible.length){
-      html += '<div class="empty">No entries match your search.</div>';
+      html += '<div class="empty">No visits match your search.</div>';
     } else {
       html += visible.map(entryRow).join("");
     }
 
     html += '<datalist id="visitTypes">' + VISIT_TYPES.map(t => '<option value="'+esc(t)+'">').join("") + '</datalist>';
+    return html;
+  }
+
+  function matchesMedSearch(m, q){
+    if(!q) return true;
+    const hay = [m.name, m.dosage, m.frequency, m.notes].join(" ").toLowerCase();
+    return hay.includes(q);
+  }
+
+  function medRow(m){
+    const open = expanded.has(m.id);
+    let body = "";
+    if(open){
+      body =
+        '<div class="fgroup"><label class="flabel">Medication Name</label>' +
+          '<input type="text" class="finput" data-mfield="name" data-med="'+m.id+'" value="'+esc(m.name||"")+'" placeholder="e.g. Atorvastatin"></div>' +
+        '<div class="fgroup"><label class="flabel">Dosage</label>' +
+          '<input type="text" class="finput" data-mfield="dosage" data-med="'+m.id+'" value="'+esc(m.dosage||"")+'" placeholder="e.g. 10mg"></div>' +
+        '<div class="fgroup"><label class="flabel">Frequency</label>' +
+          '<input type="text" class="finput" data-mfield="frequency" data-med="'+m.id+'" value="'+esc(m.frequency||"")+'" placeholder="e.g. Once daily"></div>' +
+        '<div class="fgroup"><label class="flabel">Start Date</label>' +
+          '<input type="date" class="finput" data-mfield="startDate" data-med="'+m.id+'" value="'+esc(m.startDate||"")+'"></div>' +
+        '<div class="fgroup"><label class="flabel">Notes</label>' +
+          '<textarea class="finput" data-mfield="notes" data-med="'+m.id+'" placeholder="What it&#39;s for, side effects, pharmacy…">'+esc(m.notes||"")+'</textarea></div>' +
+        '<div class="fgroup"><div class="flabel">Attachment '+fileIconHtml("medication", m.id, m.file)+'</div></div>' +
+        '<button class="edel" data-delmed="'+m.id+'">Delete Medication</button>';
+    }
+    const statusLabel = m.status === "discontinued" ? "Discontinued" : "Active";
+    return '<div class="entry'+(open?" open":"")+'" data-medcard="'+m.id+'">' +
+      '<div class="ehead" data-medhead="'+m.id+'">' +
+        '<div class="ehrow1">' +
+          '<div class="edate">'+esc(m.name||"Untitled medication")+'</div>' +
+          '<div class="epill mstat'+(m.status==="discontinued"?" discontinued":"")+'" data-mstatus="'+m.id+'" onclick="event.stopPropagation()">'+statusLabel+'</div>' +
+          '<div class="chev">&#9660;</div>' +
+        '</div>' +
+        (m.dosage || m.frequency ? '<div class="edoc">'+esc([m.dosage,m.frequency].filter(Boolean).join(" · "))+'</div>' : '') +
+      '</div>' +
+      '<div class="ebody">'+body+'</div>' +
+    '</div>';
+  }
+
+  function renderMedicationsSection(){
+    const meds = [...(log.medications||[])].sort((a,b) => {
+      const aActive = a.status !== "discontinued", bActive = b.status !== "discontinued";
+      if(aActive !== bActive) return aActive ? -1 : 1;
+      return (b.startDate||"").localeCompare(a.startDate||"");
+    });
+    const q = searchQuery.trim().toLowerCase();
+    const visible = meds.filter(m => matchesMedSearch(m, q));
+
+    let html = '<input type="search" class="search" id="searchInput" placeholder="Search medication, dosage, notes…" value="'+esc(searchQuery)+'">';
+    html += '<div class="sechead"><div class="seclabel">Medications</div><button class="addbtn" id="addMed">+</button></div>';
+
+    if(!meds.length){
+      html += '<div class="empty">No medications yet — add your first prescription.</div>';
+    } else if(!visible.length){
+      html += '<div class="empty">No medications match your search.</div>';
+    } else {
+      html += visible.map(medRow).join("");
+    }
+    return html;
+  }
+
+  function renderMain(){
+    let html = '<div class="phead"><div class="eyebrow">Medical Log</div><div class="title">Medical Log</div></div>';
+    html += '<div class="tabs">' +
+      '<button class="tabbtn'+(activeTab==="visits"?" active":"")+'" data-medtab="visits">Visits</button>' +
+      '<button class="tabbtn'+(activeTab==="medications"?" active":"")+'" data-medtab="medications">Medications</button>' +
+    '</div>';
+
+    html += activeTab === "medications" ? renderMedicationsSection() : renderVisitsSection();
+
     html += '<button class="footlink" id="changePass">Change passphrase / switch log</button>';
 
     document.getElementById("app").innerHTML = html;
@@ -318,6 +398,7 @@
   function renderAll(){ renderMain(); }
 
   function findEntry(id){ return (log.entries||[]).find(e => e.id === id); }
+  function findMedication(id){ return (log.medications||[]).find(m => m.id === id); }
 
   function wireMainEvents(){
     const app = document.getElementById("app");
@@ -330,16 +411,42 @@
       el.focus(); el.setSelectionRange(el.value.length, el.value.length);
     });
 
-    document.getElementById("addEntry").addEventListener("click", () => {
-      const entry = {id: uid(), date: todayStr(), doctor:"", institution:"", visitType:"", notes:"", medications:"", followUp:"", file:null};
-      log.entries = log.entries || [];
-      log.entries.push(entry);
-      expanded.add(entry.id);
-      queueSave();
-      setTimeout(() => {
-        const el = document.querySelector('[data-field="doctor"][data-entry="'+entry.id+'"]');
-        if(el) el.focus();
-      }, 0);
+    const addEntryBtn = document.getElementById("addEntry");
+    if(addEntryBtn){
+      addEntryBtn.addEventListener("click", () => {
+        const entry = {id: uid(), date: todayStr(), doctor:"", institution:"", visitType:"", notes:"", medications:"", followUp:"", file:null};
+        log.entries = log.entries || [];
+        log.entries.push(entry);
+        expanded.add(entry.id);
+        queueSave();
+        setTimeout(() => {
+          const el = document.querySelector('[data-field="doctor"][data-entry="'+entry.id+'"]');
+          if(el) el.focus();
+        }, 0);
+      });
+    }
+
+    const addMedBtn = document.getElementById("addMed");
+    if(addMedBtn){
+      addMedBtn.addEventListener("click", () => {
+        const med = {id: uid(), name:"", dosage:"", frequency:"", startDate: todayStr(), status:"active", notes:"", file:null};
+        log.medications = log.medications || [];
+        log.medications.push(med);
+        expanded.add(med.id);
+        queueSave();
+        setTimeout(() => {
+          const el = document.querySelector('[data-mfield="name"][data-med="'+med.id+'"]');
+          if(el) el.focus();
+        }, 0);
+      });
+    }
+
+    app.querySelectorAll("[data-medtab]").forEach(btn => {
+      btn.addEventListener("click", () => {
+        activeTab = btn.getAttribute("data-medtab");
+        searchQuery = "";
+        renderMain();
+      });
     });
 
     document.getElementById("changePass").addEventListener("click", () => {
@@ -382,18 +489,61 @@
       });
     });
 
+    app.querySelectorAll("[data-medhead]").forEach(h => {
+      h.addEventListener("click", e => {
+        if(e.target.closest("input,textarea,a,label")) return;
+        const id = h.getAttribute("data-medhead");
+        if(expanded.has(id)) expanded.delete(id); else expanded.add(id);
+        renderMain();
+      });
+    });
+
+    app.querySelectorAll("[data-mfield]").forEach(inp => {
+      inp.addEventListener("click", e => e.stopPropagation());
+      inp.addEventListener("change", () => {
+        const med = findMedication(inp.getAttribute("data-med"));
+        if(!med) return;
+        med[inp.getAttribute("data-mfield")] = inp.value.trim();
+        queueSave();
+      });
+    });
+
+    app.querySelectorAll("[data-mstatus]").forEach(pill => {
+      pill.addEventListener("click", e => {
+        e.stopPropagation();
+        const med = findMedication(pill.getAttribute("data-mstatus"));
+        if(!med) return;
+        med.status = med.status === "discontinued" ? "active" : "discontinued";
+        queueSave();
+      });
+    });
+
+    app.querySelectorAll("[data-delmed]").forEach(btn => {
+      btn.addEventListener("click", e => {
+        e.stopPropagation();
+        const id = btn.getAttribute("data-delmed");
+        const med = findMedication(id);
+        if(!med) return;
+        if(!confirm('Delete '+(med.name||"this medication")+'?')) return;
+        log.medications = log.medications.filter(x => x.id !== id);
+        expanded.delete(id);
+        queueSave();
+      });
+    });
+
     app.querySelectorAll("[data-fileupload]").forEach(inp => {
       inp.addEventListener("click", e => e.stopPropagation());
       inp.addEventListener("change", async () => {
         const label = inp.closest(".fileicon");
-        const entryId = label.getAttribute("data-entry");
-        const entry = findEntry(entryId);
-        if(!entry) return;
+        const kind = label.getAttribute("data-filekind");
+        const itemId = label.getAttribute("data-entry");
+        const item = kind === "medication" ? findMedication(itemId) : findEntry(itemId);
+        if(!item) return;
         const file = inp.files && inp.files[0];
         if(!file) return;
         toast("Uploading…");
-        const uploaded = await uploadFile(file, entryId);
-        if(uploaded){ entry.file = uploaded; queueSave(); toast("Uploaded"); }
+        const uploaded = await uploadFile(file, itemId);
+        if(uploaded){ item.file = uploaded; queueSave(); toast("Uploaded"); }
         else { toast("Upload failed — check connection"); }
       });
     });
