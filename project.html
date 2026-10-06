@@ -125,6 +125,8 @@
   .lccat:focus{color:var(--ink)}
   /* actions */
   .actions{margin-top:26px;display:flex;flex-direction:column;gap:10px}
+  .footrow{display:flex;justify-content:center;gap:22px;margin-top:22px}
+  .footlink{font-size:12px;color:var(--gray);background:none;border:none;text-decoration:underline;cursor:pointer;display:inline-block}
   .btn{width:100%;padding:14px;border-radius:7px;font-size:15px;font-weight:700;letter-spacing:.02em;cursor:pointer;text-align:center}
   .btn.primary{background:var(--ink);color:var(--paper);border:none;text-transform:uppercase}
   .btn.line{background:none;border:1.4px solid var(--ink);color:var(--ink)}
@@ -207,6 +209,21 @@
     if(!url) return '';
     return '<a class="fileicon linked" href="'+esc(url)+'" target="_blank" rel="noopener" title="Open link" onclick="event.stopPropagation()">'+LINK_SVG+'</a>';
   }
+  function downloadJson(filename, obj){
+    const blob = new Blob([JSON.stringify(obj,null,2)], {type:"application/json"});
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a"); a.href = url; a.download = filename;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 2000);
+  }
+  function readJsonFile(file){
+    return new Promise((res, rej) => {
+      const r = new FileReader();
+      r.onload = () => { try{ res(JSON.parse(r.result)); }catch(e){ rej(e); } };
+      r.onerror = rej; r.readAsText(file);
+    });
+  }
+  function safeName(s){ return String(s||"project").replace(/[^a-z0-9]+/gi,"-").replace(/^-|-$/g,"").toLowerCase() || "project"; }
   function newProjectId(){ return Math.random().toString(36).slice(2,8)+Math.random().toString(36).slice(2,6); }
   function money(n){
     n = Number(n)||0;
@@ -418,7 +435,14 @@
         '<input id="npClient" placeholder="Client name">' +
         '<button class="btn primary" id="createBtn">Create</button>' +
       '</div>';
+    html += '<div class="footrow"><button class="footlink" id="backupAll">Back up all projects</button>' +
+      '<label class="footlink">Restore from backup<input type="file" accept=".json,application/json" id="restoreAll" hidden></label></div>';
     document.getElementById("app").innerHTML = html;
+    document.getElementById("backupAll").addEventListener("click", backupAllProjects);
+    document.getElementById("restoreAll").addEventListener("change", e => {
+      const inp = e.target, file = inp.files && inp.files[0]; inp.value = "";
+      if(file) restoreFromFile(file);
+    });
     document.getElementById("showNew").addEventListener("click", () => {
       document.getElementById("showNew").style.display = "none";
       document.getElementById("newForm").style.display = "block";
@@ -430,6 +454,50 @@
       if(!name){ toast("Give the project a name"); return; }
       createProject(name, client);
     });
+  }
+
+  async function backupAllProjects(){
+    const list = getRecents().filter(r => r.role !== "view");
+    if(!list.length){ toast("No projects to back up"); return; }
+    const ok = await ensureFirebase();
+    if(!ok){ toast("Can't reach sync — check connection"); return; }
+    toast("Preparing backup…");
+    const projects = [];
+    for(const r of list){
+      try{
+        const snap = await projRef(r.id).get();
+        if(snap.exists) projects.push({id: r.id, project: snap.data()});
+      }catch(e){}
+    }
+    if(!projects.length){ toast("Couldn't read any projects"); return; }
+    downloadJson("job-tracker-backup-"+todayStr()+".json", {app:"job-tracker", version:1, exportedAt:new Date().toISOString(), projects});
+    toast("Backed up "+projects.length+(projects.length===1?" project":" projects"));
+  }
+
+  async function restoreFromFile(file){
+    let obj;
+    try{ obj = await readJsonFile(file); }catch(e){ toast("Couldn't read that file"); return; }
+    let items = null;
+    if(obj && obj.app === "job-tracker"){
+      if(Array.isArray(obj.projects)) items = obj.projects;
+      else if(obj.id && obj.project) items = [{id: obj.id, project: obj.project}];
+    }
+    items = items && items.filter(x => x && x.id && x.project && Array.isArray(x.project.jobs || []));
+    if(!items || !items.length){ toast("That isn't a Job Tracker backup"); return; }
+    const when = obj.exportedAt ? new Date(obj.exportedAt).toLocaleDateString() : "unknown date";
+    if(!confirm("Restore "+items.length+(items.length===1?" project":" projects")+" from the backup of "+when+"? Any project with the same link will be overwritten.")) return;
+    const ok = await ensureFirebase();
+    if(!ok){ toast("Can't reach sync — check connection"); return; }
+    try{
+      for(const it of items){
+        const pr = it.project;
+        pr.jobs = pr.jobs || []; pr.payments = pr.payments || []; pr.updatedAt = Date.now();
+        await projRef(it.id).set(pr);
+        saveRecent(it.id, pr.name, pr.client, "edit");
+      }
+    }catch(e){ toast("Restore failed — check connection"); return; }
+    toast("Restored "+items.length+(items.length===1?" project":" projects"));
+    renderLanding();
   }
 
   function renderError(msg){
@@ -769,6 +837,8 @@
         '<button class="btn line" id="copyShare">Copy Client Link</button>' +
       '</div>';
       html += '<a class="btn line" href="project.html" style="display:block;text-decoration:none;text-align:center;margin-top:2px">All Projects</a>';
+      html += '<div class="footrow" style="margin-top:12px"><button class="footlink" id="exportProject">Export backup</button>' +
+        '<label class="footlink">Restore from backup<input type="file" accept=".json,application/json" id="restoreProject" hidden></label></div>';
     } else {
       html += '<div class="sub" style="text-align:center;margin-top:4px">View only &mdash; ask your contractor to make changes.</div>';
     }
@@ -841,6 +911,24 @@
     const app = document.getElementById("app");
 
     if(!isView){
+      document.getElementById("exportProject").addEventListener("click", () => {
+        downloadJson("job-tracker-"+safeName(project.name)+"-"+todayStr()+".json",
+          {app:"job-tracker", version:1, exportedAt:new Date().toISOString(), id: projectId, project});
+        toast("Backup downloaded");
+      });
+      document.getElementById("restoreProject").addEventListener("change", async e => {
+        const inp = e.target, file = inp.files && inp.files[0]; inp.value = "";
+        if(!file) return;
+        let obj;
+        try{ obj = await readJsonFile(file); }catch(err){ toast("Couldn't read that file"); return; }
+        if(!obj || obj.app !== "job-tracker"){ toast("That isn't a Job Tracker backup"); return; }
+        if(Array.isArray(obj.projects)){ toast("That backup has several projects — restore it from the Projects page"); return; }
+        if(!obj.project || !Array.isArray(obj.project.jobs || [])){ toast("That isn't a Job Tracker backup"); return; }
+        const when = obj.exportedAt ? new Date(obj.exportedAt).toLocaleDateString() : "unknown date";
+        if(!confirm('Replace this project with the backup of "'+(obj.project.name||"Untitled")+'" from '+when+'? This can\'t be undone.')) return;
+        project = obj.project; project.jobs = project.jobs || []; project.payments = project.payments || [];
+        expanded.clear(); queueSave(); toast("Backup restored");
+      });
       const pName = document.getElementById("pName");
       pName.addEventListener("change", () => { project.name = pName.value.trim()||"Untitled Project"; saveRecent(projectId, project.name, project.client, "edit"); queueSave(); });
 

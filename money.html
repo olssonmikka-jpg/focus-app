@@ -116,6 +116,8 @@
   .brow.open .bedit{display:block}
   .footlink{display:block;text-align:center;margin-top:26px;font-size:12px;color:var(--gray);
     background:none;border:none;text-decoration:underline;cursor:pointer;width:100%}
+  .footrow{display:flex;justify-content:center;gap:22px;margin-top:26px}
+  .footrow .footlink{margin-top:0;width:auto;display:inline-block}
   .toast{position:fixed;left:50%;bottom:28px;transform:translateX(-50%);background:var(--ink);color:var(--paper);
     padding:10px 18px;border-radius:20px;font-size:13px;font-weight:600;opacity:0;pointer-events:none;
     transition:opacity .2s,transform .2s;z-index:50}
@@ -234,6 +236,21 @@
     d.budget = d.budget || [];
     d.debts.forEach(x => { x.payments = x.payments || []; });
     return d;
+  }
+
+  function downloadJson(filename, obj){
+    const blob = new Blob([JSON.stringify(obj,null,2)], {type:"application/json"});
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a"); a.href = url; a.download = filename;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 2000);
+  }
+  function readJsonFile(file){
+    return new Promise((res, rej) => {
+      const r = new FileReader();
+      r.onload = () => { try{ res(JSON.parse(r.result)); }catch(e){ rej(e); } };
+      r.onerror = rej; r.readAsText(file);
+    });
   }
 
   function queueSave(){
@@ -517,7 +534,9 @@
       '<button class="tabbtn'+(activeTab==="budget"?" active":"")+'" data-tab="budget">Budget</button>' +
     '</div>';
     html += activeTab === "budget" ? renderBudget() : renderOwed();
-    html += '<button class="footlink" data-act="changepass">Change passphrase / switch data</button>';
+    html += '<div class="footrow"><button class="footlink" data-act="export">Export backup</button>' +
+      '<label class="footlink">Restore from backup<input type="file" accept=".json,application/json" data-restore hidden></label></div>';
+    html += '<button class="footlink" style="margin-top:12px" data-act="changepass">Change passphrase / switch data</button>';
     document.getElementById("app").innerHTML = html;
     window.scrollTo(0, y);
   }
@@ -573,6 +592,9 @@
           const b = findBudget(id); if(!b) return;
           if(!confirm('Delete "'+(b.type||"this line")+'"?')) return;
           data.budget = data.budget.filter(x => x.id !== id); expanded.delete(id); queueSave();
+        } else if(a === "export"){
+          downloadJson("money-backup-"+todayStr()+".json", {app:"money", version:1, exportedAt:new Date().toISOString(), data});
+          toast("Backup downloaded");
         } else if(a === "changepass"){
           const val = prompt("Enter a passphrase to open data (a new one if it doesn't exist yet, or an existing one from another device):", "");
           if(val === null || !val.trim()) return;
@@ -600,6 +622,19 @@
     app.addEventListener("change", e => {
       if(!data) return;
       const el = e.target;
+      if(el.hasAttribute && el.hasAttribute("data-restore")){
+        const file = el.files && el.files[0]; el.value = "";
+        if(!file) return;
+        readJsonFile(file).then(obj => {
+          if(!obj || obj.app !== "money" || !obj.data || !Array.isArray(obj.data.debts) || !Array.isArray(obj.data.budget)){
+            toast("That isn't a Money backup"); return;
+          }
+          const when = obj.exportedAt ? new Date(obj.exportedAt).toLocaleDateString() : "unknown date";
+          if(!confirm("Replace everything here with the backup from "+when+" ("+obj.data.debts.length+" owed, "+obj.data.budget.length+" budget lines)? This can't be undone.")) return;
+          data = normalize(obj.data); expanded.clear(); queueSave(); toast("Backup restored");
+        }).catch(() => toast("Couldn't read that file"));
+        return;
+      }
       const df = el.getAttribute && el.getAttribute("data-dfield");
       if(df){
         const x = findDebt(el.getAttribute("data-id")); if(!x) return;
