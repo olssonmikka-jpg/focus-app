@@ -1,0 +1,636 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="theme-color" content="#141414">
+<title>Money</title>
+<script defer src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js"></script>
+<script defer src="https://www.gstatic.com/firebasejs/10.14.1/firebase-auth-compat.js"></script>
+<script defer src="https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore-compat.js"></script>
+<style>
+  :root{
+    --paper:#FAFAF8; --ink:#141414; --gray:#8a8a86; --hair:#e3e3df; --faint:#f0f0ec;
+  }
+  *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+  html,body{background:var(--paper)}
+  body{
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    color:var(--ink);min-height:100vh;
+  }
+  #app{max-width:640px;margin:0 auto;padding:calc(env(safe-area-inset-top,0px) + 20px) 18px 60px}
+  input,textarea,select,button{font-family:inherit;color:var(--ink);outline:none}
+  input,textarea,select{background:transparent;border:none}
+  .eyebrow{font-size:12px;font-weight:700;letter-spacing:.18em;color:var(--gray);text-transform:uppercase}
+  .title{font-size:30px;font-weight:800;letter-spacing:-.01em;line-height:1.15;margin-top:2px}
+  .sub{font-size:14px;color:var(--gray);margin-top:4px;line-height:1.4}
+  .phead{padding-bottom:14px;border-bottom:2px solid var(--ink);margin-bottom:18px}
+  .hint{font-size:11px;color:var(--gray);margin-top:6px;line-height:1.4}
+  .center{text-align:center;color:var(--gray);font-size:14px;padding:40px 0}
+  .empty{padding:16px 2px;font-size:13px;color:var(--gray);font-style:italic}
+  /* setup */
+  .setupbox{border:1.6px dashed var(--ink);border-radius:8px;padding:16px;margin-top:16px}
+  .setupbox input{display:block;width:100%;font-size:16px;border-bottom:1.3px solid var(--hair);padding:9px 2px;margin-bottom:12px}
+  .setupbox input:focus{border-color:var(--ink)}
+  .btn{width:100%;padding:14px;border-radius:7px;font-size:15px;font-weight:700;letter-spacing:.02em;cursor:pointer;text-align:center}
+  .btn.primary{background:var(--ink);color:var(--paper);border:none;text-transform:uppercase}
+  .btn:active{opacity:.8}
+  /* tabs */
+  .tabs{display:flex;border:1.6px solid var(--ink);border-radius:8px;overflow:hidden;margin-bottom:18px}
+  .tabbtn{flex:1;background:none;border:none;padding:11px;font-size:13px;font-weight:800;letter-spacing:.08em;
+    text-transform:uppercase;color:var(--ink);cursor:pointer}
+  .tabbtn+.tabbtn{border-left:1.6px solid var(--ink)}
+  .tabbtn.active{background:var(--ink);color:var(--paper)}
+  /* stat tiles */
+  .stats{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin-bottom:20px}
+  .stat{border:1.6px solid var(--ink);border-radius:8px;padding:12px 8px;text-align:center}
+  .stat b{display:block;font-size:22px;font-weight:800}
+  .stat span{font-size:10px;font-weight:800;letter-spacing:.1em;text-transform:uppercase;color:var(--gray)}
+  /* section header */
+  .sechead{display:flex;align-items:center;justify-content:space-between;gap:10px;padding-bottom:6px;
+    border-bottom:1.5px solid var(--ink)}
+  .seclabel{font-size:13px;font-weight:800;letter-spacing:.14em;text-transform:uppercase}
+  .secsum{font-size:14px;font-weight:800}
+  .secsum small{font-size:11px;font-weight:700;color:var(--gray);margin-left:2px}
+  .tg{display:flex;border:1.3px solid var(--ink);border-radius:6px;overflow:hidden}
+  .tg button{background:none;border:none;padding:5px 9px;font-size:10px;font-weight:800;letter-spacing:.06em;
+    text-transform:uppercase;cursor:pointer}
+  .tg button+button{border-left:1.3px solid var(--ink)}
+  .tg button.active{background:var(--ink);color:var(--paper)}
+  .dashadd{display:block;width:100%;margin-top:12px;background:none;border:1.5px dashed var(--ink);border-radius:8px;
+    padding:12px;font-size:13px;font-weight:800;letter-spacing:.04em;cursor:pointer;text-align:center}
+  .dashadd:active{background:var(--faint)}
+  /* debt cards */
+  .entry{border:1.6px solid var(--ink);border-radius:8px;margin-top:12px;overflow:hidden}
+  .ehead{padding:12px;cursor:pointer}
+  .r1{display:flex;align-items:center;justify-content:space-between;gap:10px}
+  .nm{font-size:16px;font-weight:800;overflow-wrap:anywhere}
+  .bal{font-size:16px;font-weight:800;white-space:nowrap}
+  .r2{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-top:5px;font-size:12px;color:var(--gray)}
+  .epill{display:inline-block;font-size:10px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;
+    border:1.3px solid var(--ink);border-radius:20px;padding:2px 8px;color:var(--ink);margin-right:6px}
+  .epill.biz{background:var(--ink);color:var(--paper)}
+  .epill.paid{border-style:dashed;border-color:var(--gray);color:var(--gray)}
+  .bar{height:6px;border-radius:3px;background:var(--hair);margin:9px 0 2px;overflow:hidden}
+  .bar i{display:block;height:100%;background:var(--ink)}
+  .urgent{color:var(--ink);font-weight:800}
+  .ebody{display:none;border-top:1px solid var(--hair);padding:14px}
+  .entry.open .ebody{display:block}
+  .fgroup{margin-top:14px}
+  .fgroup:first-child{margin-top:0}
+  .flabel{font-size:11px;font-weight:800;letter-spacing:.1em;color:var(--gray);text-transform:uppercase;margin-bottom:5px}
+  .finput{width:100%;font-size:15px;border:1.3px solid var(--hair);border-radius:6px;padding:9px 10px;background:#fff}
+  .finput:focus{border-color:var(--ink)}
+  textarea.finput{min-height:64px;resize:vertical;line-height:1.4}
+  .two{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+  .edel{width:100%;margin-top:16px;background:none;border:1.3px solid var(--hair);color:var(--gray);
+    border-radius:6px;padding:9px;font-size:12px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;cursor:pointer}
+  .edel:active{border-color:var(--ink);color:var(--ink)}
+  .payhead{margin-top:18px;padding-top:12px;border-top:1px solid var(--hair)}
+  .payline{display:flex;align-items:center;justify-content:space-between;gap:8px;font-size:13px;
+    padding:7px 0;border-bottom:1px solid var(--hair)}
+  .payline b{font-weight:800}
+  .payline .x{background:none;border:none;color:var(--gray);font-size:15px;padding:0 4px;cursor:pointer}
+  .payform{display:flex;gap:8px;margin-top:10px}
+  .payform .finput{flex:1;min-width:0}
+  .paybtn{flex:0 0 auto;background:var(--ink);color:var(--paper);border:none;border-radius:6px;padding:0 14px;
+    font-size:12px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;cursor:pointer}
+  .paybtn:active{opacity:.8}
+  /* budget rows */
+  .cols{display:grid;grid-template-columns:46px 1fr auto;gap:10px;font-size:10px;font-weight:800;letter-spacing:.1em;
+    text-transform:uppercase;color:var(--gray);padding:10px 0 4px}
+  .brow{border-bottom:1px solid var(--hair)}
+  .bl{display:grid;grid-template-columns:46px 1fr auto;gap:10px;align-items:center;padding:10px 0;cursor:pointer}
+  .dt{text-align:center;font-size:11px;font-weight:700;color:var(--gray);line-height:1.2;text-transform:uppercase;
+    letter-spacing:.04em;padding:4px 0;border-radius:6px}
+  .dt b{display:block;font-size:17px;font-weight:800;color:var(--ink);letter-spacing:0}
+  .dt.soon{background:var(--ink);color:#d8d8d4}
+  .dt.soon b{color:var(--paper)}
+  .ty{font-size:15px;font-weight:700;overflow-wrap:anywhere}
+  .fq{display:inline-block;margin-top:3px;font-size:10px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;
+    border:1.2px solid var(--ink);border-radius:20px;padding:1px 8px}
+  .am{text-align:right;font-size:15px;font-weight:800;white-space:nowrap}
+  .am small{display:block;font-size:11px;font-weight:600;color:var(--gray)}
+  .bedit{display:none;padding:2px 0 14px}
+  .brow.open .bedit{display:block}
+  .footlink{display:block;text-align:center;margin-top:26px;font-size:12px;color:var(--gray);
+    background:none;border:none;text-decoration:underline;cursor:pointer;width:100%}
+  .toast{position:fixed;left:50%;bottom:28px;transform:translateX(-50%);background:var(--ink);color:var(--paper);
+    padding:10px 18px;border-radius:20px;font-size:13px;font-weight:600;opacity:0;pointer-events:none;
+    transition:opacity .2s,transform .2s;z-index:50}
+  .toast.show{opacity:1;transform:translateX(-50%) translateY(-4px)}
+</style>
+</head>
+<body>
+<div id="app"><div class="center">Loading…</div></div>
+<div class="toast" id="toast"></div>
+
+<script>
+(function(){
+  "use strict";
+
+  /* ---------- helpers ---------- */
+  function esc(s){
+    const d=document.createElement("div"); d.textContent=(s==null?"":String(s));
+    return d.innerHTML.replace(/"/g,"&quot;");
+  }
+  function uid(){ return Date.now().toString(36)+Math.random().toString(36).slice(2,8); }
+  function pad(n){ return String(n).padStart(2,"0"); }
+  function fmtDate(y,m,d){ return y+"-"+pad(m)+"-"+pad(d); }
+  function todayStr(){
+    const d = new Date();
+    return fmtDate(d.getFullYear(), d.getMonth()+1, d.getDate());
+  }
+  function parseDate(s){
+    const p = String(s||"").split("-");
+    if(p.length!==3) return null;
+    const y=+p[0], m=+p[1], d=+p[2];
+    if(!y||!m||!d) return null;
+    return {y,m,d};
+  }
+  function toLocal(s){ const p = parseDate(s); return p ? new Date(p.y,p.m-1,p.d) : null; }
+  function dateShort(s){
+    const d = toLocal(s); if(!d) return s||"";
+    return d.toLocaleDateString(undefined,{month:"short",day:"numeric",year:"numeric"});
+  }
+  function daysUntil(s){
+    const d = toLocal(s); if(!d) return null;
+    const t = toLocal(todayStr());
+    return Math.round((d-t)/864e5);
+  }
+  function addMonths(a, n){
+    const total = (a.y*12 + (a.m-1)) + n;
+    const y = Math.floor(total/12), m = total%12;
+    const dim = new Date(y, m+1, 0).getDate();
+    return fmtDate(y, m+1, Math.min(a.d, dim));
+  }
+  function money(n){
+    n = +n || 0;
+    const neg = n < 0; n = Math.abs(n);
+    const frac = Math.abs(n - Math.round(n)) > 0.004;
+    return (neg?"-":"")+"$"+n.toLocaleString("en-US",{minimumFractionDigits:frac?2:0, maximumFractionDigits:2});
+  }
+  function num(v){ const n = parseFloat(String(v).replace(/[^0-9.\-]/g,"")); return isFinite(n) ? n : 0; }
+  let toastTimer = null;
+  function toast(msg){
+    const el = document.getElementById("toast");
+    el.textContent = msg; el.classList.add("show");
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(()=>el.classList.remove("show"), 2000);
+  }
+
+  /* ---------- firebase ---------- */
+  const FIREBASE_CONFIG = {
+    apiKey: "AIzaSyCQwd7wLx5iLNjwaeQD9JaFORJFbrleIsU",
+    authDomain: "focus-app-5be8b.firebaseapp.com",
+    projectId: "focus-app-5be8b",
+    storageBucket: "focus-app-5be8b.firebasestorage.app",
+    messagingSenderId: "749902078589",
+    appId: "1:749902078589:web:cb8435eafcb7524d870714"
+  };
+  const COLLECTION = "moneyLog";
+  let fbReady = null;
+  async function ensureFirebase(){
+    if(fbReady) return fbReady;
+    fbReady = (async () => {
+      if(typeof firebase === "undefined") throw new Error("no sdk");
+      firebase.initializeApp(FIREBASE_CONFIG);
+      await firebase.auth().signInAnonymously();
+      return true;
+    })().catch(() => null);
+    return fbReady;
+  }
+  async function hashCode(code){
+    const buf = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(code.trim().toLowerCase()));
+    return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2,"0")).join("");
+  }
+  function docRef(hash){ return firebase.firestore().collection(COLLECTION).doc(hash); }
+
+  /* ---------- state ---------- */
+  const PASS_KEY = "money-passphrase";
+  let logHash = null;
+  let data = null;
+  let lastLocalWriteAt = 0;
+  let saveTimer = null;
+  let activeTab = "owed";
+  let owedFilter = "all";
+  const expanded = new Set();
+
+  const FREQS = [
+    {k:"weekly",    label:"Weekly",         perYear:52, days:7},
+    {k:"biweekly",  label:"Every 2 weeks",  perYear:26, days:14},
+    {k:"monthly",   label:"Monthly",        perYear:12, months:1},
+    {k:"bimonthly", label:"Every 2 months", perYear:6,  months:2},
+    {k:"quarterly", label:"Quarterly",      perYear:4,  months:3},
+    {k:"semiannual",label:"Every 6 months", perYear:2,  months:6},
+    {k:"yearly",    label:"Yearly",         perYear:1,  months:12}
+  ];
+  function freqInfo(k){ return FREQS.find(f => f.k === k) || FREQS[2]; }
+
+  function normalize(d){
+    d = d || {};
+    d.debts = d.debts || [];
+    d.budget = d.budget || [];
+    d.debts.forEach(x => { x.payments = x.payments || []; });
+    return d;
+  }
+
+  function queueSave(){
+    data.updatedAt = Date.now();
+    lastLocalWriteAt = data.updatedAt;
+    renderMain();
+    clearTimeout(saveTimer);
+    saveTimer = setTimeout(doSave, 500);
+  }
+  async function doSave(){
+    const ok = await ensureFirebase();
+    if(!ok){ toast("Can't reach sync — check connection"); return; }
+    try{ await docRef(logHash).set(data); }
+    catch(e){ toast("Save failed — will retry"); setTimeout(doSave, 3000); }
+  }
+
+  async function openLog(passphrase){
+    document.getElementById("app").innerHTML = '<div class="center">Loading…</div>';
+    const ok = await ensureFirebase();
+    if(!ok){ renderError("Couldn't connect. Check your internet connection and reload."); return; }
+    try{
+      const hash = await hashCode(passphrase);
+      logHash = hash;
+      const ref = docRef(hash);
+      const snap = await ref.get();
+      if(snap.exists){
+        data = normalize(snap.data());
+      } else {
+        data = normalize({updatedAt: Date.now()});
+        await ref.set(data);
+      }
+      lastLocalWriteAt = data.updatedAt || 0;
+      renderMain();
+      ref.onSnapshot(doc => {
+        if(!doc.exists) return;
+        const d = doc.data();
+        if((d.updatedAt||0) > lastLocalWriteAt + 400){
+          data = normalize(d);
+          lastLocalWriteAt = d.updatedAt;
+          renderMain();
+        }
+      });
+    }catch(e){ renderError("Couldn't load your data. Check your internet connection and reload."); }
+  }
+
+  function renderError(msg){
+    document.getElementById("app").innerHTML =
+      '<div class="phead"><div class="eyebrow">Personal and business</div><div class="title">Money</div></div>' +
+      '<div class="center">'+esc(msg)+'</div>';
+  }
+
+  function renderSetup(){
+    document.getElementById("app").innerHTML =
+      '<div class="phead"><div class="eyebrow">Private</div><div class="title">Money</div>' +
+      '<div class="sub">This browser doesn\'t have a passphrase saved. Enter your existing one to open your numbers here too, or type a new one to start fresh.</div></div>' +
+      '<div class="setupbox">' +
+        '<input id="passInput" type="password" placeholder="Your passphrase">' +
+        '<button class="btn primary" id="passGo">Continue</button>' +
+        '<div class="hint">The same passphrase always opens the same data — it\'s not tied to an account. Remember it: there\'s no recovery if you forget it.</div>' +
+      '</div>';
+    document.getElementById("passGo").addEventListener("click", () => {
+      const val = document.getElementById("passInput").value;
+      if(!val.trim()){ toast("Enter a passphrase"); return; }
+      localStorage.setItem(PASS_KEY, val.trim());
+      openLog(val.trim());
+    });
+    document.getElementById("passInput").addEventListener("keydown", e => {
+      if(e.key === "Enter") document.getElementById("passGo").click();
+    });
+  }
+
+  /* ---------- owed ---------- */
+  function findDebt(id){ return data.debts.find(x => x.id === id); }
+
+  function dueText(x){
+    if(!x.dueDate || !(x.balance > 0)) return {text:"", urgent:false};
+    const n = daysUntil(x.dueDate);
+    if(n === null) return {text:"", urgent:false};
+    if(n < 0) return {text:"Overdue "+(-n)+(n===-1?" day":" days"), urgent:true};
+    if(n === 0) return {text:"Due today", urgent:true};
+    if(n <= 14) return {text:"Due in "+n+(n===1?" day":" days"), urgent:n<=3};
+    return {text:"Due "+dateShort(x.dueDate), urgent:false};
+  }
+
+  function dueThisMonth(){
+    const t = parseDate(todayStr());
+    const endStr = fmtDate(t.y, t.m, 31);
+    return data.debts.reduce((sum,x) => {
+      if(!(x.balance > 0) || !x.dueDate || x.dueDate > endStr) return sum;
+      const amt = x.monthly > 0 ? Math.min(x.monthly, x.balance) : x.balance;
+      return sum + amt;
+    }, 0);
+  }
+
+  function debtRow(x){
+    const open = expanded.has(x.id);
+    const paidOff = !(x.balance > 0);
+    const due = dueText(x);
+    let body = "";
+    if(open){
+      const pays = [...x.payments].sort((a,b) => (b.date||"").localeCompare(a.date||""));
+      body =
+        '<div class="fgroup"><div class="flabel">Name</div>' +
+          '<input type="text" class="finput" data-dfield="name" data-id="'+x.id+'" value="'+esc(x.name||"")+'" placeholder="Person or institution"></div>' +
+        '<div class="fgroup two">' +
+          '<div><div class="flabel">Belongs to</div><select class="finput" data-dfield="kind" data-id="'+x.id+'">' +
+            '<option value="personal"'+(x.kind!=="business"?" selected":"")+'>Personal</option>' +
+            '<option value="business"'+(x.kind==="business"?" selected":"")+'>Business</option></select></div>' +
+          '<div><div class="flabel">Type</div><input type="text" class="finput" list="partyTypes" data-dfield="party" data-id="'+x.id+'" value="'+esc(x.party||"")+'" placeholder="Institution, Person…"></div>' +
+        '</div>' +
+        '<div class="fgroup two">' +
+          '<div><div class="flabel">Original amount</div><input type="number" inputmode="decimal" step="0.01" class="finput" data-dfield="total" data-id="'+x.id+'" value="'+(x.total||"")+'" placeholder="0.00"></div>' +
+          '<div><div class="flabel">Balance now</div><input type="number" inputmode="decimal" step="0.01" class="finput" data-dfield="balance" data-id="'+x.id+'" value="'+(x.balance||"")+'" placeholder="0.00"></div>' +
+        '</div>' +
+        '<div class="fgroup two">' +
+          '<div><div class="flabel">Monthly payment</div><input type="number" inputmode="decimal" step="0.01" class="finput" data-dfield="monthly" data-id="'+x.id+'" value="'+(x.monthly||"")+'" placeholder="0.00"></div>' +
+          '<div><div class="flabel">Next due date</div><input type="date" class="finput" data-dfield="dueDate" data-id="'+x.id+'" value="'+esc(x.dueDate||"")+'"></div>' +
+        '</div>' +
+        '<div class="fgroup"><div class="flabel">Notes</div>' +
+          '<textarea class="finput" data-dfield="notes" data-id="'+x.id+'" placeholder="Account number, terms, interest…">'+esc(x.notes||"")+'</textarea></div>' +
+        '<div class="payhead"><div class="flabel">Payments</div>' +
+          (pays.length ? pays.map(p =>
+            '<div class="payline"><span>'+esc(dateShort(p.date))+'</span><span><b>'+money(p.amount)+'</b>' +
+            '<button class="x" data-act="delpay" data-id="'+x.id+'" data-pid="'+p.id+'" title="Remove payment">&#10005;</button></span></div>'
+          ).join("") : '<div class="hint" style="margin:0 0 4px">No payments logged yet.</div>') +
+          '<div class="payform">' +
+            '<input type="number" inputmode="decimal" step="0.01" class="finput" id="payamt-'+x.id+'" placeholder="Amount paid">' +
+            '<input type="date" class="finput" id="paydate-'+x.id+'" value="'+todayStr()+'">' +
+            '<button class="paybtn" data-act="logpay" data-id="'+x.id+'">Log</button>' +
+          '</div>' +
+          '<div class="hint">Logging a payment lowers the balance and moves the due date forward a month.</div>' +
+        '</div>' +
+        '<button class="edel" data-act="deldebt" data-id="'+x.id+'">Delete</button>';
+    }
+    const pct = x.total > 0 ? Math.max(0, Math.min(100, (x.total - x.balance) / x.total * 100)) : null;
+    const pill = paidOff
+      ? '<span class="epill paid">Paid off</span>'
+      : '<span class="epill'+(x.kind==="business"?" biz":"")+'">'+(x.kind==="business"?"Business":"Personal")+'</span>';
+    return '<div class="entry'+(open?" open":"")+'">' +
+      '<div class="ehead" data-debthead="'+x.id+'">' +
+        '<div class="r1"><div class="nm">'+esc(x.name||"Untitled")+'</div><div class="bal">'+money(x.balance)+'</div></div>' +
+        '<div class="r2"><span>'+pill+esc(x.party||"")+'</span>' +
+          (x.total > 0 ? '<span>of '+money(x.total)+'</span>' : '') + '</div>' +
+        (pct !== null ? '<div class="bar"><i style="width:'+pct.toFixed(1)+'%"></i></div>' : '') +
+        ((x.monthly > 0 || due.text) ?
+          '<div class="r2"><span>'+(x.monthly > 0 ? money(x.monthly)+'/mo' : '')+'</span>' +
+          '<span'+(due.urgent?' class="urgent"':'')+'>'+esc(due.text)+'</span></div>' : '') +
+      '</div>' +
+      '<div class="ebody">'+body+'</div>' +
+    '</div>';
+  }
+
+  function renderOwed(){
+    const all = data.debts;
+    const owing = all.filter(x => x.balance > 0);
+    const totalOwed = owing.reduce((s,x) => s + x.balance, 0);
+    let html = '<div class="stats">' +
+      '<div class="stat"><b>'+money(totalOwed)+'</b><span>Total owed</span></div>' +
+      '<div class="stat"><b>'+money(dueThisMonth())+'</b><span>Due this month</span></div>' +
+    '</div>';
+
+    html += '<div class="sechead"><div class="seclabel">Who I owe</div><div class="tg">' +
+      [["all","All"],["personal","Personal"],["business","Business"]].map(f =>
+        '<button data-filter="'+f[0]+'" class="'+(owedFilter===f[0]?"active":"")+'">'+f[1]+'</button>').join("") +
+    '</div></div>';
+
+    const visible = all.filter(x => owedFilter==="all" || (x.kind||"personal")===owedFilter);
+    visible.sort((a,b) => {
+      const ap = a.balance > 0, bp = b.balance > 0;
+      if(ap !== bp) return ap ? -1 : 1;
+      const ad = a.dueDate || "9999", bd = b.dueDate || "9999";
+      return ad.localeCompare(bd) || (a.name||"").localeCompare(b.name||"");
+    });
+    if(!all.length) html += '<div class="empty">Nothing here yet — add who you owe.</div>';
+    else if(!visible.length) html += '<div class="empty">Nothing in this view.</div>';
+    else html += visible.map(debtRow).join("");
+
+    html += '<button class="dashadd" data-act="adddebt">+ Add who I owe</button>';
+    html += '<datalist id="partyTypes"><option value="Institution"><option value="Person"><option value="Invoice"><option value="Credit card"><option value="Loan"></datalist>';
+    return html;
+  }
+
+  /* ---------- budget ---------- */
+  function findBudget(id){ return data.budget.find(x => x.id === id); }
+
+  function nextDue(item){
+    const a = parseDate(item.date);
+    if(!a) return "";
+    const t = todayStr();
+    if(item.date >= t) return item.date;
+    const f = freqInfo(item.freq);
+    if(f.days){
+      const diff = Math.round((toLocal(t) - toLocal(item.date)) / 864e5);
+      const k = Math.ceil(diff / f.days);
+      const d = new Date(a.y, a.m-1, a.d + k*f.days);
+      return fmtDate(d.getFullYear(), d.getMonth()+1, d.getDate());
+    }
+    const tn = parseDate(t);
+    const md = (tn.y-a.y)*12 + (tn.m-a.m);
+    let k = Math.max(0, Math.floor(md / f.months));
+    let s = addMonths(a, k*f.months);
+    while(s < t){ k++; s = addMonths(a, k*f.months); }
+    return s;
+  }
+  function monthlyEq(item){ return (item.amount||0) * freqInfo(item.freq).perYear / 12; }
+
+  function budgetRow(b){
+    const open = expanded.has(b.id);
+    const nd = nextDue(b);
+    const dd = toLocal(nd);
+    const left = nd ? daysUntil(nd) : null;
+    const soon = left !== null && left <= 7;
+    const dateBox = dd
+      ? '<div class="dt'+(soon?" soon":"")+'">'+esc(dd.toLocaleDateString(undefined,{month:"short"}))+'<b>'+dd.getDate()+'</b></div>'
+      : '<div class="dt"><b>—</b></div>';
+    const f = freqInfo(b.freq);
+    let edit = "";
+    if(open){
+      edit =
+        '<div class="bedit">' +
+        '<div class="fgroup two">' +
+          '<div><div class="flabel">Next due date</div><input type="date" class="finput" data-bfield="date" data-id="'+b.id+'" value="'+esc(nd||"")+'"></div>' +
+          '<div><div class="flabel">Amount</div><input type="number" inputmode="decimal" step="0.01" class="finput" data-bfield="amount" data-id="'+b.id+'" value="'+(b.amount||"")+'" placeholder="0.00"></div>' +
+        '</div>' +
+        '<div class="fgroup"><div class="flabel">Type</div><input type="text" class="finput" data-bfield="type" data-id="'+b.id+'" value="'+esc(b.type||"")+'" placeholder="Rent, insurance, software…"></div>' +
+        '<div class="fgroup two">' +
+          '<div><div class="flabel">How often</div><select class="finput" data-bfield="freq" data-id="'+b.id+'">' +
+            FREQS.map(x => '<option value="'+x.k+'"'+(x.k===f.k?" selected":"")+'>'+x.label+'</option>').join("") + '</select></div>' +
+          '<div><div class="flabel">Section</div><select class="finput" data-bfield="section" data-id="'+b.id+'">' +
+            '<option value="personal"'+(b.section!=="business"?" selected":"")+'>Personal</option>' +
+            '<option value="business"'+(b.section==="business"?" selected":"")+'>Business</option></select></div>' +
+        '</div>' +
+        '<button class="edel" data-act="delbudget" data-id="'+b.id+'">Delete line</button>' +
+        '</div>';
+    }
+    return '<div class="brow'+(open?" open":"")+'">' +
+      '<div class="bl" data-bhead="'+b.id+'">' + dateBox +
+        '<div><div class="ty">'+esc(b.type||"Untitled")+'</div><span class="fq">'+esc(f.label)+'</span></div>' +
+        '<div class="am">'+money(b.amount)+'<small>'+money(Math.round(monthlyEq(b)*100)/100)+' / mo</small></div>' +
+      '</div>' + edit +
+    '</div>';
+  }
+
+  function budgetSection(section, label){
+    const items = data.budget.filter(b => (b.section||"personal") === section);
+    items.sort((a,b) => {
+      const an = nextDue(a) || "9999", bn = nextDue(b) || "9999";
+      return an.localeCompare(bn) || (a.type||"").localeCompare(b.type||"");
+    });
+    const sum = items.reduce((s,b) => s + monthlyEq(b), 0);
+    let html = '<div class="sechead" style="margin-top:'+(section==="personal"?0:28)+'px"><div class="seclabel">'+label+'</div>' +
+      '<div class="secsum">'+money(Math.round(sum*100)/100)+'<small>/ mo</small></div></div>';
+    if(items.length){
+      html += '<div class="cols"><span>Date</span><span>Type · how often</span><span style="text-align:right">Amount</span></div>';
+      html += items.map(budgetRow).join("");
+    } else {
+      html += '<div class="empty">No '+label.toLowerCase()+' lines yet.</div>';
+    }
+    html += '<button class="dashadd" data-act="addbudget" data-section="'+section+'">+ Add '+label.toLowerCase()+' line</button>';
+    return html;
+  }
+
+  function renderBudget(){
+    const perMonth = data.budget.reduce((s,b) => s + monthlyEq(b), 0);
+    let html = '<div class="stats">' +
+      '<div class="stat"><b>'+money(Math.round(perMonth*100)/100)+'</b><span>Per month</span></div>' +
+      '<div class="stat"><b>'+money(Math.round(perMonth*12*100)/100)+'</b><span>Per year</span></div>' +
+    '</div>';
+    html += budgetSection("personal","Personal");
+    html += budgetSection("business","Business");
+    return html;
+  }
+
+  /* ---------- main ---------- */
+  function renderMain(){
+    // keep scroll position across re-renders
+    const y = window.scrollY;
+    let html = '<div class="phead"><div class="eyebrow">Personal and business</div><div class="title">Money</div></div>';
+    html += '<div class="tabs">' +
+      '<button class="tabbtn'+(activeTab==="owed"?" active":"")+'" data-tab="owed">Owed</button>' +
+      '<button class="tabbtn'+(activeTab==="budget"?" active":"")+'" data-tab="budget">Budget</button>' +
+    '</div>';
+    html += activeTab === "budget" ? renderBudget() : renderOwed();
+    html += '<button class="footlink" data-act="changepass">Change passphrase / switch data</button>';
+    document.getElementById("app").innerHTML = html;
+    window.scrollTo(0, y);
+  }
+
+  function wireEvents(){
+    const app = document.getElementById("app");
+
+    app.addEventListener("click", e => {
+      if(!data) return;
+      const t = e.target;
+
+      const tab = t.closest("[data-tab]");
+      if(tab){ activeTab = tab.getAttribute("data-tab"); renderMain(); return; }
+
+      const flt = t.closest("[data-filter]");
+      if(flt){ owedFilter = flt.getAttribute("data-filter"); renderMain(); return; }
+
+      const act = t.closest("[data-act]");
+      if(act){
+        const a = act.getAttribute("data-act"), id = act.getAttribute("data-id");
+        if(a === "adddebt"){
+          const x = {id: uid(), name:"", kind: owedFilter==="business"?"business":"personal", party:"", total:0, balance:0, monthly:0, dueDate:"", notes:"", payments:[]};
+          data.debts.push(x); expanded.add(x.id); queueSave();
+          setTimeout(() => { const el = document.querySelector('[data-dfield="name"][data-id="'+x.id+'"]'); if(el) el.focus(); }, 0);
+        } else if(a === "deldebt"){
+          const x = findDebt(id); if(!x) return;
+          if(!confirm('Delete "'+(x.name||"this entry")+'"?')) return;
+          data.debts = data.debts.filter(d => d.id !== id); expanded.delete(id); queueSave();
+        } else if(a === "logpay"){
+          const x = findDebt(id); if(!x) return;
+          const amt = num(document.getElementById("payamt-"+id).value);
+          const date = document.getElementById("paydate-"+id).value || todayStr();
+          if(!(amt > 0)){ toast("Enter the amount paid"); return; }
+          x.payments.push({id: uid(), date, amount: amt});
+          x.balance = Math.max(0, Math.round((x.balance - amt)*100)/100);
+          if(x.dueDate && x.balance > 0){
+            const p = parseDate(x.dueDate);
+            if(p) x.dueDate = addMonths(p, 1);
+          }
+          queueSave(); toast("Payment logged");
+        } else if(a === "delpay"){
+          const x = findDebt(id); if(!x) return;
+          const p = x.payments.find(q => q.id === act.getAttribute("data-pid")); if(!p) return;
+          if(!confirm("Remove this "+money(p.amount)+" payment? The balance goes back up.")) return;
+          x.payments = x.payments.filter(q => q.id !== p.id);
+          x.balance = Math.round((x.balance + p.amount)*100)/100;
+          queueSave();
+        } else if(a === "addbudget"){
+          const b = {id: uid(), section: act.getAttribute("data-section"), date: todayStr(), type:"", amount:0, freq:"monthly"};
+          data.budget.push(b); expanded.add(b.id); queueSave();
+          setTimeout(() => { const el = document.querySelector('[data-bfield="type"][data-id="'+b.id+'"]'); if(el) el.focus(); }, 0);
+        } else if(a === "delbudget"){
+          const b = findBudget(id); if(!b) return;
+          if(!confirm('Delete "'+(b.type||"this line")+'"?')) return;
+          data.budget = data.budget.filter(x => x.id !== id); expanded.delete(id); queueSave();
+        } else if(a === "changepass"){
+          const val = prompt("Enter a passphrase to open data (a new one if it doesn't exist yet, or an existing one from another device):", "");
+          if(val === null || !val.trim()) return;
+          localStorage.setItem(PASS_KEY, val.trim());
+          expanded.clear();
+          openLog(val.trim());
+        }
+        return;
+      }
+
+      const dh = t.closest("[data-debthead]");
+      if(dh){
+        const id = dh.getAttribute("data-debthead");
+        if(expanded.has(id)) expanded.delete(id); else expanded.add(id);
+        renderMain(); return;
+      }
+      const bh = t.closest("[data-bhead]");
+      if(bh){
+        const id = bh.getAttribute("data-bhead");
+        if(expanded.has(id)) expanded.delete(id); else expanded.add(id);
+        renderMain(); return;
+      }
+    });
+
+    app.addEventListener("change", e => {
+      if(!data) return;
+      const el = e.target;
+      const df = el.getAttribute && el.getAttribute("data-dfield");
+      if(df){
+        const x = findDebt(el.getAttribute("data-id")); if(!x) return;
+        if(df === "total" || df === "balance" || df === "monthly"){
+          const prevTotal = x.total || 0;
+          x[df] = Math.round(num(el.value)*100)/100;
+          // first time an original amount is entered, start the balance there
+          if(df === "total" && !(x.balance > 0) && !prevTotal && x.payments.length === 0) x.balance = x.total;
+        } else {
+          x[df] = el.value.trim();
+        }
+        queueSave(); return;
+      }
+      const bf = el.getAttribute && el.getAttribute("data-bfield");
+      if(bf){
+        const b = findBudget(el.getAttribute("data-id")); if(!b) return;
+        if(bf === "amount") b.amount = Math.round(num(el.value)*100)/100;
+        else b[bf] = el.value.trim();
+        queueSave();
+      }
+    });
+  }
+
+  /* ---------- boot ---------- */
+  document.addEventListener("DOMContentLoaded", () => {
+    wireEvents();
+    const saved = localStorage.getItem(PASS_KEY);
+    if(saved) openLog(saved);
+    else renderSetup();
+  });
+})();
+</script>
+</body>
+</html>
