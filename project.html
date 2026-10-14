@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <meta name="apple-mobile-web-app-capable" content="yes">
-<meta name="theme-color" content="#141414">
+<meta name="theme-color" content="#E3792F">
 <title>Project Tracker</title>
 <script defer src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js"></script>
 <script defer src="https://www.gstatic.com/firebasejs/10.14.1/firebase-auth-compat.js"></script>
@@ -173,6 +173,10 @@
     .psgrand td.num{text-align:right;font-weight:800}
     .psnote{font-size:10px;color:#777;margin-top:24px}
   }
+:root{--accent:#E3792F;--accent-ink:#1D1D1B}
+  /* brand accent: Mikka Olsson Design orange */
+  .phead{border-bottom:3px solid var(--accent)}
+  .tabbtn.active,.mtbtn.active,.btn.primary,.addrow .iadd{background:var(--accent);color:var(--accent-ink)}
 </style>
 </head>
 <body>
