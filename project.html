@@ -307,6 +307,65 @@
     localStorage.setItem(RECENTS_KEY, JSON.stringify(list.slice(0,20)));
   }
 
+  /* ---------- cross-device project list (optional, protected by a passphrase) ----------
+     Kept as one small doc in the existing clientProjects collection (id "idx_<hash of passphrase>"),
+     so no new Firestore rules are needed. The local recents list stays as the on-device cache. */
+  const JT_PASS_KEY = "jt-passphrase";
+  let landingSynced = false;
+  function jtPass(){ try{ return localStorage.getItem(JT_PASS_KEY) || ""; }catch(e){ return ""; } }
+  async function hashCode(code){
+    const buf = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(code.trim().toLowerCase()));
+    return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2,"0")).join("");
+  }
+  async function idxRef(){
+    const p = jtPass(); if(!p) return null;
+    const ok = await ensureFirebase(); if(!ok) return null;
+    return projRef("idx_" + await hashCode(p));
+  }
+  async function pushIndexEntry(id, name, client){
+    try{
+      const ref = await idxRef(); if(!ref) return;
+      await firebase.firestore().runTransaction(async tx => {
+        const snap = await tx.get(ref);
+        const list = snap.exists ? (snap.data().projects || []) : [];
+        const entry = {id, name: name || "", client: client || ""};
+        const i = list.findIndex(p => p.id === id);
+        if(i >= 0){
+          if(list[i].name === entry.name && list[i].client === entry.client) return;
+          list[i] = entry;
+        } else list.push(entry);
+        tx.set(ref, {type:"index", projects: list, updatedAt: Date.now()});
+      });
+    }catch(e){}
+  }
+  // Merge this browser's projects into the synced list and pull in ones from other devices.
+  // Resolves true when the local list changed.
+  async function syncIndex(){
+    try{
+      const ref = await idxRef(); if(!ref) return false;
+      const first = await ref.get();
+      const have = new Set(first.exists ? (first.data().projects || []).map(p => p.id) : []);
+      const local = getRecents();
+      for(const r of local.filter(r => r.role !== "view")){
+        if(!have.has(r.id)) await pushIndexEntry(r.id, r.name, r.client);
+      }
+      const snap = await ref.get();
+      const remote = snap.exists ? (snap.data().projects || []) : [];
+      const byId = new Map(remote.map(p => [p.id, p]));
+      const next = [];
+      local.forEach(r => {
+        if(r.role === "view") return;
+        const p = byId.get(r.id);
+        if(p){ next.push({id:r.id, name:p.name, client:p.client, role:"edit"}); byId.delete(r.id); }
+      });
+      byId.forEach(p => next.push({id:p.id, name:p.name, client:p.client, role:"edit"}));
+      local.filter(r => r.role === "view").forEach(r => next.push(r));
+      const changed = JSON.stringify(next) !== JSON.stringify(local);
+      if(changed) localStorage.setItem(RECENTS_KEY, JSON.stringify(next));
+      return changed;
+    }catch(e){ return false; }
+  }
+
   /* ---------- state ---------- */
   const params = new URLSearchParams(location.search);
   const projectId = params.get("id");
@@ -400,7 +459,7 @@
       project.jobs = project.jobs || [];
       project.payments = project.payments || [];
       lastLocalWriteAt = project.updatedAt || 0;
-      if(!isView) saveRecent(id, project.name, project.client, "edit");
+      if(!isView){ saveRecent(id, project.name, project.client, "edit"); pushIndexEntry(id, project.name, project.client); }
       renderAll();
       projRef(id).onSnapshot(doc => {
         if(!doc.exists) return;
@@ -443,6 +502,7 @@
     project = emptyProject(name, client);
     await projRef(id).set(project);
     saveRecent(id, project.name, project.client, "edit");
+    await pushIndexEntry(id, project.name, project.client);
     location.href = "project.html?id=" + id;
   }
 
@@ -467,9 +527,38 @@
         '<input id="npClient" placeholder="Client name">' +
         '<button class="btn primary" id="createBtn">Create</button>' +
       '</div>';
+    if(!jtPass()){
+      html += '<div class="newform" style="margin-top:22px"><div class="sharelbl">Sync projects across devices</div>' +
+        '<div class="hint" style="margin-bottom:10px">Enter a passphrase to see this list on your other devices. Use the same one on each.</div>' +
+        '<input id="jtPass" type="password" placeholder="Passphrase">' +
+        '<button class="btn line" id="jtPassGo">Turn on sync</button></div>';
+    }
     html += '<div class="footrow"><button class="footlink" id="backupAll">Back up all projects</button>' +
       '<label class="footlink">Restore from backup<input type="file" accept=".json,application/json" id="restoreAll" hidden></label></div>';
+    if(jtPass()) html += '<button class="footlink" id="jtPassChange" style="display:block;margin:12px auto 0">Synced across devices &middot; change passphrase / turn off</button>';
     document.getElementById("app").innerHTML = html;
+    const passGo = document.getElementById("jtPassGo");
+    if(passGo){
+      const go = () => {
+        const v = document.getElementById("jtPass").value.trim();
+        if(!v){ toast("Enter a passphrase"); return; }
+        localStorage.setItem(JT_PASS_KEY, v); landingSynced = false; toast("Syncing…"); renderLanding();
+      };
+      passGo.addEventListener("click", go);
+      document.getElementById("jtPass").addEventListener("keydown", e => { if(e.key === "Enter") go(); });
+    }
+    const passChange = document.getElementById("jtPassChange");
+    if(passChange) passChange.addEventListener("click", () => {
+      const v = prompt("Passphrase for syncing your project list (use the same on every device). Leave blank to turn sync off:", jtPass());
+      if(v === null) return;
+      if(!v.trim()){ localStorage.removeItem(JT_PASS_KEY); toast("Sync turned off on this device"); }
+      else { localStorage.setItem(JT_PASS_KEY, v.trim()); toast("Syncing…"); }
+      landingSynced = false; renderLanding();
+    });
+    if(jtPass() && !landingSynced){
+      landingSynced = true;
+      syncIndex().then(changed => { if(changed) renderLanding(); });
+    }
     document.getElementById("backupAll").addEventListener("click", backupAllProjects);
     document.getElementById("restoreAll").addEventListener("change", e => {
       const inp = e.target, file = inp.files && inp.files[0]; inp.value = "";
@@ -526,6 +615,7 @@
         pr.jobs = pr.jobs || []; pr.payments = pr.payments || []; pr.updatedAt = Date.now();
         await projRef(it.id).set(pr);
         saveRecent(it.id, pr.name, pr.client, "edit");
+        await pushIndexEntry(it.id, pr.name, pr.client);
       }
     }catch(e){ toast("Restore failed — check connection"); return; }
     toast("Restored "+items.length+(items.length===1?" project":" projects"));
@@ -962,7 +1052,7 @@
         expanded.clear(); queueSave(); toast("Backup restored");
       });
       const pName = document.getElementById("pName");
-      pName.addEventListener("change", () => { project.name = pName.value.trim()||"Untitled Project"; saveRecent(projectId, project.name, project.client, "edit"); queueSave(); });
+      pName.addEventListener("change", () => { project.name = pName.value.trim()||"Untitled Project"; saveRecent(projectId, project.name, project.client, "edit"); pushIndexEntry(projectId, project.name, project.client); queueSave(); });
 
       const addJobBtn = document.getElementById("addJob");
       if(addJobBtn){
