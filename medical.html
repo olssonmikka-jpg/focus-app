@@ -101,6 +101,8 @@
   /* brand accent: Mikka Olsson Design orange */
   .phead{border-bottom:3px solid var(--accent)}
   .tabbtn.active,.btn.primary{background:var(--accent);color:var(--accent-ink)}
+  /* iOS Safari gives date inputs a fixed intrinsic width that pokes out of the card — pin them to the column */
+  input[type="date"]{-webkit-appearance:none;appearance:none;display:block;width:100%;min-width:0;max-width:100%;height:41px;line-height:normal}
 </style>
 </head>
 <body>

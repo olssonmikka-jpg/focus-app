@@ -84,7 +84,7 @@
   .finput{width:100%;font-size:15px;border:1.3px solid var(--hair);border-radius:6px;padding:9px 10px;background:#fff}
   .finput:focus{border-color:var(--ink)}
   textarea.finput{min-height:64px;resize:vertical;line-height:1.4}
-  .two{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+  .two{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:10px}
   .edel{width:100%;margin-top:16px;background:none;border:1.3px solid var(--hair);color:var(--gray);
     border-radius:6px;padding:9px;font-size:12px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;cursor:pointer}
   .edel:active{border-color:var(--ink);color:var(--ink)}
@@ -129,6 +129,8 @@
   .tabbtn.active,.btn.primary,.tg button.active,.paybtn,.dt.soon{background:var(--accent);color:var(--accent-ink)}
   .dt.soon b{color:var(--accent-ink)}
   .bar i{background:var(--accent)}
+  /* iOS Safari gives date inputs a fixed intrinsic width that pokes out of the card — pin them to the column */
+  input[type="date"]{-webkit-appearance:none;appearance:none;display:block;width:100%;min-width:0;max-width:100%;height:41px;line-height:normal}
 </style>
 </head>
 <body>
