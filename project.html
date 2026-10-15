@@ -313,6 +313,8 @@
   const isView = params.get("view") === "1";
   let project = null;
   let lastLocalWriteAt = 0;
+  const CLIENT_ID = uid();   // identifies this tab so we can ignore our own saves echoing back
+  let dirty = false;         // local edits not yet confirmed saved
   let saveTimer = null;
   const expanded = new Set();
   let activeTab = "projects";
@@ -373,6 +375,8 @@
   /* ---------- persistence ---------- */
   function queueSave(){
     project.updatedAt = Date.now();
+    project.writer = CLIENT_ID;
+    dirty = true;
     lastLocalWriteAt = project.updatedAt;
     renderAll();
     clearTimeout(saveTimer);
@@ -381,7 +385,8 @@
   async function doSave(){
     const ok = await ensureFirebase();
     if(!ok) { toast("Can't reach sync — check connection"); return; }
-    try{ await projRef(projectId).set(project); }
+    const savedAt = project.updatedAt;
+    try{ await projRef(projectId).set(project); if(project.updatedAt === savedAt) dirty = false; }
     catch(e){ toast("Save failed — will retry"); setTimeout(doSave, 3000); }
   }
 
@@ -399,14 +404,36 @@
       renderAll();
       projRef(id).onSnapshot(doc => {
         if(!doc.exists) return;
-        const data = doc.data();
-        if((data.updatedAt||0) > lastLocalWriteAt + 400){
-          project = data; project.jobs = project.jobs || []; project.payments = project.payments || [];
-          lastLocalWriteAt = data.updatedAt;
-          renderAll();
-        }
+        applyRemote(doc.data(), doc.metadata.hasPendingWrites);
       });
     }catch(e){ renderError("Couldn't load this project. Check your internet connection and reload."); }
+  }
+
+  function applyRemote(d, pending){
+    if(pending || dirty || !project) return;
+    if(d.writer === CLIENT_ID) return;
+    if((d.updatedAt||0) === (project.updatedAt||0)) return;
+    project = d; project.jobs = project.jobs || []; project.payments = project.payments || [];
+    lastLocalWriteAt = d.updatedAt || 0;
+    renderAll();
+  }
+  async function refreshFromServer(){
+    if(!project || !projectId || dirty) return;
+    try{
+      const snap = await projRef(projectId).get({source:"server"});
+      if(snap.exists) applyRemote(snap.data(), false);
+    }catch(e){}
+  }
+  function setupResync(){
+    // Phones suspend background tabs and drop the live connection, so also
+    // re-check the server whenever the page comes back (and every 45s while open).
+    let last = 0;
+    const go = () => { const n = Date.now(); if(n - last < 3000) return; last = n; refreshFromServer(); };
+    document.addEventListener("visibilitychange", () => { if(!document.hidden) go(); });
+    window.addEventListener("pageshow", go);
+    window.addEventListener("online", go);
+    window.addEventListener("focus", go);
+    setInterval(() => { if(!document.hidden) refreshFromServer(); }, 45000);
   }
 
   async function createProject(name, client){
@@ -1230,6 +1257,7 @@
 
   /* ---------- boot ---------- */
   document.addEventListener("DOMContentLoaded", () => {
+    setupResync();
     if(projectId){
       openProject(projectId);
     } else {

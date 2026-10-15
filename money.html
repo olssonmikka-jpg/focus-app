@@ -221,6 +221,9 @@
   let logHash = null;
   let data = null;
   let lastLocalWriteAt = 0;
+  const CLIENT_ID = uid();   // identifies this tab so we can ignore our own saves echoing back
+  let dirty = false;         // local edits not yet confirmed saved
+  let unsub = null;
   let saveTimer = null;
   let activeTab = "owed";
   let owedFilter = "all";
@@ -262,6 +265,8 @@
 
   function queueSave(){
     data.updatedAt = Date.now();
+    data.writer = CLIENT_ID;
+    dirty = true;
     lastLocalWriteAt = data.updatedAt;
     renderMain();
     clearTimeout(saveTimer);
@@ -270,7 +275,8 @@
   async function doSave(){
     const ok = await ensureFirebase();
     if(!ok){ toast("Can't reach sync — check connection"); return; }
-    try{ await docRef(logHash).set(data); }
+    const savedAt = data.updatedAt;
+    try{ await docRef(logHash).set(data); if(data.updatedAt === savedAt) dirty = false; }
     catch(e){ toast("Save failed — will retry"); setTimeout(doSave, 3000); }
   }
 
@@ -291,16 +297,39 @@
       }
       lastLocalWriteAt = data.updatedAt || 0;
       renderMain();
-      ref.onSnapshot(doc => {
+      if(unsub) unsub();
+      unsub = ref.onSnapshot(doc => {
         if(!doc.exists) return;
-        const d = doc.data();
-        if((d.updatedAt||0) > lastLocalWriteAt + 400){
-          data = normalize(d);
-          lastLocalWriteAt = d.updatedAt;
-          renderMain();
-        }
+        applyRemote(doc.data(), doc.metadata.hasPendingWrites);
       });
     }catch(e){ renderError("Couldn't load your data. Check your internet connection and reload."); }
+  }
+
+  function applyRemote(d, pending){
+    if(pending || dirty || !data) return;
+    if(d.writer === CLIENT_ID) return;
+    if((d.updatedAt||0) === (data.updatedAt||0)) return;
+    data = normalize(d);
+    lastLocalWriteAt = d.updatedAt || 0;
+    renderMain();
+  }
+  async function refreshFromServer(){
+    if(!data || !logHash || dirty) return;
+    try{
+      const snap = await docRef(logHash).get({source:"server"});
+      if(snap.exists) applyRemote(snap.data(), false);
+    }catch(e){}
+  }
+  function setupResync(){
+    // Phones suspend background tabs and drop the live connection, so also
+    // re-check the server whenever the page comes back (and every 45s while open).
+    let last = 0;
+    const go = () => { const n = Date.now(); if(n - last < 3000) return; last = n; refreshFromServer(); };
+    document.addEventListener("visibilitychange", () => { if(!document.hidden) go(); });
+    window.addEventListener("pageshow", go);
+    window.addEventListener("online", go);
+    window.addEventListener("focus", go);
+    setInterval(() => { if(!document.hidden) refreshFromServer(); }, 45000);
   }
 
   function renderError(msg){
@@ -668,6 +697,7 @@
   /* ---------- boot ---------- */
   document.addEventListener("DOMContentLoaded", () => {
     wireEvents();
+    setupResync();
     const saved = localStorage.getItem(PASS_KEY);
     if(saved) openLog(saved);
     else renderSetup();

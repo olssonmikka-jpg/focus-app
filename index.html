@@ -704,6 +704,8 @@
   };
   const SYNC_KEY = "focus-sync-code";
   let fbReady = null, fbUnsub = null, lastPulledAt = 0;
+  const CLIENT_ID = uid();   // identifies this tab so we can ignore our own saves echoing back
+  let syncHash = null;
 
   function syncCode(){ return localStorage.getItem(SYNC_KEY) || ""; }
   function setSyncStatus(text){ const el = document.getElementById("syncStatus"); if(el) el.textContent = text; }
@@ -733,7 +735,7 @@
       const hash = await hashCode(code);
       state.updatedAt = Date.now();
       lastPulledAt = state.updatedAt;
-      await docRef(hash).set({ state, updatedAt: state.updatedAt });
+      await docRef(hash).set({ state, updatedAt: state.updatedAt, writer: CLIENT_ID });
       setSyncStatus("Synced ✓ — code: "+code);
     }catch(e){ setSyncStatus("Sync error — tap to retry"); }
   }
@@ -745,6 +747,7 @@
     if(!ok){ setSyncStatus("Sync not set up yet — see setup notes"); return; }
     try{
       const hash = await hashCode(code);
+      syncHash = hash;
       const ref = docRef(hash);
       const snap = await ref.get();
       if(snap.exists){
@@ -763,18 +766,42 @@
       }
       if(fbUnsub) fbUnsub();
       fbUnsub = ref.onSnapshot(doc => {
-        if(!doc.exists) return;
+        if(!doc.exists || doc.metadata.hasPendingWrites) return;
         const data = doc.data();
-        if(data.updatedAt && data.updatedAt > lastPulledAt + 500){
-          lastPulledAt = data.updatedAt;
-          state = Object.assign(state, data.state, {updatedAt: data.updatedAt});
-          save(); renderAll();
-          toast("Synced from other device");
-        }
+        if(data.writer === CLIENT_ID || !data.state) return;
+        if(data.updatedAt && data.updatedAt !== state.updatedAt) applyRemoteState(data);
       });
       setSyncStatus("Synced ✓ — code: "+code);
     }catch(e){ setSyncStatus("Sync error — tap to retry"); }
   }
+
+  function applyRemoteState(data){
+    lastPulledAt = data.updatedAt;
+    state = Object.assign(state, data.state, {updatedAt: data.updatedAt});
+    save(); renderAll();
+    toast("Synced from other device");
+  }
+  async function refreshSync(){
+    if(!syncCode() || !syncHash || !fbReady) return;
+    try{
+      const snap = await docRef(syncHash).get({source:"server"});
+      if(!snap.exists) return;
+      const data = snap.data();
+      if(data.writer === CLIENT_ID || !data.state) return;
+      if((data.updatedAt||0) > (state.updatedAt||0)) applyRemoteState(data);
+    }catch(e){}
+  }
+  (function(){
+    // Phones suspend background tabs and drop the live connection, so also
+    // re-check the server whenever the app comes back (and every 45s while open).
+    let last = 0;
+    const go = () => { const n = Date.now(); if(n - last < 3000) return; last = n; refreshSync(); };
+    document.addEventListener("visibilitychange", () => { if(!document.hidden) go(); });
+    window.addEventListener("pageshow", go);
+    window.addEventListener("online", go);
+    window.addEventListener("focus", go);
+    setInterval(() => { if(!document.hidden) refreshSync(); }, 45000);
+  })();
 
   document.getElementById("syncBtn").addEventListener("click", () => {
     const current = syncCode();
