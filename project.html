@@ -178,6 +178,15 @@
   /* brand accent: Mikka Olsson Design orange */
   .phead{border-bottom:3px solid var(--accent)}
   .tabbtn.active,.mtbtn.active,.btn.primary,.addrow .iadd{background:var(--accent);color:var(--accent-ink)}
+  /* tasks overview tab */
+  .tabbtn{padding:11px 4px;font-size:12px;letter-spacing:.05em}
+  .tasksum{font-size:12px;color:var(--gray);margin:8px 2px 0}
+  .tasksum b{color:var(--ink);font-weight:800}
+  .tjob{margin-top:18px}
+  .tjhead{display:flex;align-items:baseline;justify-content:space-between;gap:10px;padding-bottom:5px;
+    border-bottom:1.5px solid var(--ink);cursor:pointer}
+  .tjtitle{font-size:15px;font-weight:800;overflow-wrap:anywhere}
+  .tjcount{flex:0 0 auto;font-size:10px;font-weight:800;letter-spacing:.1em;text-transform:uppercase;color:var(--gray)}
 </style>
 </head>
 <body>
@@ -377,6 +386,7 @@
   let saveTimer = null;
   const expanded = new Set();
   let activeTab = "projects";
+  let taskFilter = "open";
   let costFilter = "labor";
 
   function emptyProject(name, client){
@@ -691,6 +701,42 @@
     return html;
   }
 
+  // Tasks tab: every job's tasks in one place, grouped by job
+  function renderTasksTab(){
+    const jobs = project.jobs || [];
+    const total = jobs.reduce((n,j) => n + (j.tasks||[]).length, 0);
+    const openCount = jobs.reduce((n,j) => n + (j.tasks||[]).filter(t => !t.done).length, 0);
+    let html = '<div class="sechead"><div class="seclabel">Tasks</div><div class="mtoggle">' +
+      '<button class="mtbtn'+(taskFilter==="open"?" active":"")+'" data-taskfilter="open">Open</button>' +
+      '<button class="mtbtn'+(taskFilter==="all"?" active":"")+'" data-taskfilter="all">All</button>' +
+    '</div></div>';
+    html += '<div class="tasksum"><b>'+openCount+'</b> open &middot; <b>'+(total-openCount)+'</b> done</div>';
+    if(!jobs.length){
+      return html + '<div class="empty">No jobs yet — add one on the Projects tab.</div>';
+    }
+    let shownJobs = 0;
+    jobs.forEach(job => {
+      const tasks = job.tasks || [];
+      const shown = taskFilter === "open" ? tasks.filter(t => !t.done) : tasks;
+      if(isView && !shown.length) return;
+      shownJobs++;
+      const openN = tasks.filter(t => !t.done).length;
+      html += '<div class="tjob"><div class="tjhead" data-gojob="'+job.id+'">' +
+        '<div class="tjtitle">'+esc(job.title||"Untitled Job")+'</div>' +
+        '<div class="tjcount">'+openN+' open</div></div>';
+      html += shown.map(t => taskRow(job,t)).join("") ||
+        '<div class="empty" style="padding:8px 2px">'+(tasks.length ? "All tasks done." : "No tasks yet.")+'</div>';
+      if(!isView){
+        html += '<div class="addrow" data-addtask="'+job.id+'">' +
+          '<input type="text" class="itext" placeholder="Add a task">' +
+          '<button class="iadd">+</button></div>';
+      }
+      html += '</div>';
+    });
+    if(isView && !shownJobs) html += '<div class="empty">'+(total ? "Everything is done." : "No tasks yet.")+'</div>';
+    return html;
+  }
+
   function renderJob(job){
     const t = jobTotals(job);
     const open = expanded.has(job.id);
@@ -941,11 +987,12 @@
 
     html += '<div class="tabs">' +
       '<button class="tabbtn'+(activeTab==="projects"?" active":"")+'" data-tab="projects">Projects</button>' +
+      '<button class="tabbtn'+(activeTab==="tasks"?" active":"")+'" data-tab="tasks">Tasks</button>' +
       '<button class="tabbtn'+(activeTab==="cost"?" active":"")+'" data-tab="cost">Cost</button>' +
       '<button class="tabbtn'+(activeTab==="notes"?" active":"")+'" data-tab="notes">Notes</button>' +
       '</div>';
 
-    html += activeTab === "cost" ? renderCostTab(ledger, lt) : activeTab === "notes" ? renderProjectNotesTab() : renderProjectsTab();
+    html += activeTab === "cost" ? renderCostTab(ledger, lt) : activeTab === "notes" ? renderProjectNotesTab() : activeTab === "tasks" ? renderTasksTab() : renderProjectsTab();
 
     html += '<div class="actions">';
     if(activeTab === "cost" && ledger.length){
@@ -1100,6 +1147,21 @@
     app.querySelectorAll("[data-tab]").forEach(btn => {
       btn.addEventListener("click", () => {
         activeTab = btn.getAttribute("data-tab");
+        renderAll();
+      });
+    });
+
+    app.querySelectorAll("[data-taskfilter]").forEach(btn => {
+      btn.addEventListener("click", () => {
+        taskFilter = btn.getAttribute("data-taskfilter");
+        renderAll();
+      });
+    });
+
+    app.querySelectorAll("[data-gojob]").forEach(h => {
+      h.addEventListener("click", () => {
+        expanded.add(h.getAttribute("data-gojob"));
+        activeTab = "projects";
         renderAll();
       });
     });
