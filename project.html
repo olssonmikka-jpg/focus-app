@@ -82,6 +82,10 @@
   .addrow{display:flex;flex-wrap:wrap;gap:8px;padding:10px 2px 2px;align-items:center}
   .addrow input,.addrow select{border:1.3px solid var(--hair);border-radius:5px;padding:8px 9px;font-size:14px;background:#fff}
   .addrow input:focus,.addrow select:focus{border-color:var(--ink)}
+  .addrow textarea{border:1.3px solid var(--hair);border-radius:5px;padding:8px 9px;font-size:14px;line-height:1.35;
+    background:#fff;resize:none;overflow:hidden;font-family:inherit}
+  .addrow textarea:focus{border-color:var(--ink)}
+  .addrow textarea.itext{align-self:flex-start}
   .addrow .idate{flex:0 0 auto;width:132px}
   .addrow .inum{flex:0 0 auto;width:76px}
   .addrow .itext{flex:1 1 120px;min-width:100px}
@@ -99,10 +103,12 @@
   .fileicon.linked{color:var(--ink)}
   .fileicon input{position:absolute;inset:0;opacity:0;cursor:pointer}
   /* notes */
-  .ntrow{display:flex;align-items:center;gap:8px;padding:8px 2px;border-bottom:1px solid var(--hair)}
-  .ntinput{flex:1;min-width:0;font-size:14px;padding:2px 0;border-bottom:1.5px dashed transparent}
+  .ntrow{display:flex;align-items:flex-start;gap:8px;padding:8px 2px;border-bottom:1px solid var(--hair)}
+  .ntrow .ntrm{height:22px;line-height:22px}
+  .ntinput{flex:1;min-width:0;font-size:14px;line-height:1.35;padding:2px 0;border-bottom:1.5px dashed transparent;
+    resize:none;overflow:hidden;display:block}
   .ntinput:focus{border-color:var(--gray)}
-  .nttext{flex:1;min-width:0;font-size:14px;overflow-wrap:anywhere}
+  .nttext{flex:1;min-width:0;font-size:14px;line-height:1.35;padding:2px 0;overflow-wrap:anywhere;white-space:pre-wrap}
   .ntrm{flex:0 0 auto;border:none;background:none;color:var(--gray);font-size:15px;width:20px;cursor:pointer}
   /* tasks */
   .trow{display:flex;align-items:center;gap:10px;padding:8px 2px;border-bottom:1px solid var(--hair)}
@@ -657,7 +663,7 @@
     return '<div class="ntrow" data-noterow="'+n.id+'" data-job="'+job.id+'">' +
       (isView
         ? '<div class="nttext">'+esc(n.text)+'</div>'
-        : '<input class="ntinput" data-noteinput="'+n.id+'" value="'+esc(n.text)+'">') +
+        : '<textarea class="ntinput" rows="1" data-noteinput="'+n.id+'">'+esc(n.text)+'</textarea>') +
       urlIconHtml(n.text) +
       fileIconHtml("note", job.id, n.id, n.file) +
       (isView?'':'<button class="ntrm" data-rmnote="1">&times;</button>') +
@@ -671,7 +677,7 @@
     html += notes.map(n => noteRow(job,n)).join("") || (isView?'<div class="empty">No notes yet.</div>':'');
     if(!isView){
       html += '<div class="addrow" data-addnote="'+job.id+'">' +
-        '<input type="text" class="itext" placeholder="Add a note">' +
+        '<textarea class="itext" rows="1" placeholder="Add a note"></textarea>' +
         '<button class="iadd">+</button></div>';
     }
     html += '</div>';
@@ -810,7 +816,7 @@
     return '<div class="ntrow" data-pnoterow="'+n.id+'">' +
       (isView
         ? '<div class="nttext">'+esc(n.text)+'</div>'
-        : '<input class="ntinput" data-pnoteinput="'+n.id+'" value="'+esc(n.text)+'">') +
+        : '<textarea class="ntinput" rows="1" data-pnoteinput="'+n.id+'">'+esc(n.text)+'</textarea>') +
       urlIconHtml(n.text) +
       (isView?'':'<button class="ntrm" data-rmpnote="1">&times;</button>') +
     '</div>';
@@ -826,7 +832,7 @@
     }
     if(!isView){
       html += '<div class="addrow" data-addprojectnote="1">' +
-        '<input type="text" class="itext" placeholder="Add a note">' +
+        '<textarea class="itext" rows="1" placeholder="Add a note"></textarea>' +
         '<button class="iadd">+</button></div>';
     }
     return html;
@@ -1076,8 +1082,11 @@
   function renderAll(){ renderProject(); }
 
   /* ---------- events ---------- */
+  function autoGrow(el){ el.style.height = "auto"; el.style.height = el.scrollHeight + "px"; }
+  const GROW_SEL = "textarea.ntinput, .addrow textarea.itext";
   function wireProjectEvents(shareUrl){
     const app = document.getElementById("app");
+    app.querySelectorAll(GROW_SEL).forEach(t => { autoGrow(t); t.addEventListener("input", () => autoGrow(t)); });
 
     if(!isView){
       document.getElementById("exportProject").addEventListener("click", () => {
@@ -1410,6 +1419,7 @@
   /* ---------- boot ---------- */
   document.addEventListener("DOMContentLoaded", () => {
     setupResync();
+    window.addEventListener("resize", () => document.querySelectorAll(GROW_SEL).forEach(autoGrow));
     if(projectId){
       openProject(projectId);
     } else {
