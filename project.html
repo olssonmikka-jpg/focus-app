@@ -115,6 +115,7 @@
   .tbox{flex:0 0 auto;width:19px;height:19px;border:1.6px solid var(--ink);border-radius:3px;cursor:pointer;
     display:flex;align-items:center;justify-content:center;font-size:12px;color:var(--paper)}
   .trow.done .tbox{background:var(--ink)}
+  .tbox.ro{cursor:default;pointer-events:none}
   .ttext{flex:1;min-width:0;font-size:14px;overflow-wrap:anywhere}
   .trow.done .ttext{color:var(--gray);text-decoration:line-through}
   .trm{flex:0 0 auto;border:none;background:none;color:var(--gray);font-size:15px;width:20px;cursor:pointer}
@@ -686,7 +687,7 @@
 
   function taskRow(job, t){
     return '<div class="trow'+(t.done?" done":"")+'" data-taskrow="'+t.id+'" data-job="'+job.id+'">' +
-      '<div class="tbox"'+(isView?"":' data-taskbox="1"')+'>'+(t.done?"&#10003;":"")+'</div>' +
+      '<div class="tbox'+(isView?" ro":"")+'"'+(isView?"":' data-taskbox="1"')+'>'+(t.done?"&#10003;":"")+'</div>' +
       '<div class="ttext">'+esc(t.text)+'</div>' +
       fileIconHtml("task", job.id, t.id, t.file) +
       (isView?'':'<button class="trm" data-rmtask="1">&times;</button>') +
