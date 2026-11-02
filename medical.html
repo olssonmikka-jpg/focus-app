@@ -7,6 +7,7 @@
 <meta name="theme-color" content="#E3792F">
 <title>Medical Log</title>
 <script defer src="appnav.js"></script>
+<script defer src="aibar.js"></script>
 <script defer src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js"></script>
 <script defer src="https://www.gstatic.com/firebasejs/10.14.1/firebase-auth-compat.js"></script>
 <script defer src="https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore-compat.js"></script>
@@ -245,6 +246,7 @@
       }
       lastLocalWriteAt = log.updatedAt || 0;
       renderAll();
+      if(window.AIBar) AIBar.show();
       if(unsub) unsub();
       unsub = ref.onSnapshot(doc => {
         if(!doc.exists) return;
@@ -288,6 +290,7 @@
 
   /* ---------- setup screen (passphrase) ---------- */
   function renderSetup(){
+    if(window.AIBar) AIBar.hide();
     document.getElementById("app").innerHTML =
       '<div class="phead"><div class="eyebrow">Private</div><div class="title">Medical Log</div>' +
       '<div class="sub">This browser doesn\'t have a passphrase saved. Enter your existing one to open your log here too, or type a new one to start a fresh log.</div></div>' +
@@ -623,9 +626,173 @@
     });
   }
 
+
+  /* ---------- AI assistant (see aibar.js) ---------- */
+  const AI_STR = {type:"string"};
+  const AI_TOOLS = [
+    {
+      name: "add_visit",
+      description: "Propose adding a new doctor visit to the log. Use for a visit report, discharge summary, lab or imaging report, bill or appointment the user wants filed, or when they describe a visit. Only fill fields you can actually read or were told - leave the rest empty; never guess. The user confirms before it is saved.",
+      input_schema: { type:"object", properties: {
+        date: {type:"string", description:"Visit date as YYYY-MM-DD"},
+        doctor: {type:"string", description:"Doctor or provider name"},
+        institution: {type:"string", description:"Clinic, hospital or lab name"},
+        visit_type: {type:"string", description:"Short category, e.g. Dental, Annual Checkup, Lab Work, Imaging, Specialist, Follow-up, Urgent Care"},
+        notes: {type:"string", description:"Concise summary of the visit: reason, findings, diagnosis, instructions"},
+        medications: {type:"string", description:"Medications prescribed or changed at this visit, if any"},
+        follow_up: {type:"string", description:"Follow-up date as YYYY-MM-DD if one is stated, else empty"},
+        attach_file: {type:"boolean", description:"true to attach the user's photo or document to this visit (do this when filing from an attachment)"}
+      }, required: ["date"] }
+    },
+    {
+      name: "update_visit",
+      description: "Propose changing fields on an existing visit. Give the visit id from the log data and only the fields that should change.",
+      input_schema: { type:"object", properties: {
+        id: AI_STR, date: AI_STR, doctor: AI_STR, institution: AI_STR, visit_type: AI_STR, notes: AI_STR, medications: AI_STR, follow_up: AI_STR
+      }, required: ["id"] }
+    },
+    {
+      name: "add_medication",
+      description: "Propose adding a prescription to the Medications list.",
+      input_schema: { type:"object", properties: {
+        name: AI_STR, dosage: AI_STR, frequency: {type:"string", description:"e.g. Once daily"},
+        start_date: {type:"string", description:"YYYY-MM-DD"}, notes: AI_STR,
+        status: {type:"string", enum:["active","discontinued"]}
+      }, required: ["name"] }
+    },
+    {
+      name: "update_medication",
+      description: "Propose changing an existing medication (e.g. mark it discontinued). Give the medication id from the log data and only the fields that should change.",
+      input_schema: { type:"object", properties: {
+        id: AI_STR, name: AI_STR, dosage: AI_STR, frequency: AI_STR, start_date: AI_STR, notes: AI_STR,
+        status: {type:"string", enum:["active","discontinued"]}
+      }, required: ["id"] }
+    }
+  ];
+
+  function aiStr(v){ return typeof v === "string" ? v.trim() : ""; }
+  function aiDate(v){ return /^\d{4}-\d{2}-\d{2}$/.test(aiStr(v)) ? aiStr(v) : ""; }
+
+  function aiSystemPrompt(){
+    const clip = (t, n) => { t = t || ""; return t.length > n ? t.slice(0, n) + "…" : t; };
+    const big = JSON.stringify(log).length > 150000;
+    const data = {
+      today: todayStr(),
+      visits: (log.entries||[]).map(e => ({id:e.id, date:e.date, doctor:e.doctor, institution:e.institution, visit_type:e.visitType,
+        notes: big ? clip(e.notes, 400) : e.notes, medications:e.medications, follow_up:e.followUp, has_attachment: !!(e.file && e.file.url)})),
+      medications: (log.medications||[]).map(m => ({id:m.id, name:m.name, dosage:m.dosage, frequency:m.frequency, start_date:m.startDate, status:m.status||"active", notes:m.notes}))
+    };
+    return "You are the assistant inside the user's private Medical Log app. Today's date is " + todayStr() + ".\n\n" +
+      "The user's full log is given below as JSON. Use it to answer questions. Count carefully, and when you give a count or list, name the matching visits (date and doctor) so the user can verify. Say plainly when the log doesn't contain something. Interpret 'the last year' etc. relative to today's date.\n\n" +
+      "When the user attaches a photo or document (visit report, lab result, prescription, bill), read it carefully and propose records with the tools: add_visit for a visit, add_medication for each new prescription. Fill in only what is actually on the document or what the user told you; leave anything unreadable or absent empty and mention it. Dates must be YYYY-MM-DD. When filing from an attachment set attach_file to true on add_visit. If a visit with the same date and doctor is already in the log, say so instead of adding a duplicate.\n\n" +
+      "When the user asks to change a record, use update_visit or update_medication with the record's id. You cannot delete anything. The tools only PROPOSE changes: the user reviews and taps Save in the app, so call them directly instead of asking permission first, and also write one or two short sentences saying what you found or propose.\n\n" +
+      "Keep answers short and plain. You are not a doctor - don't give medical advice, just organize and report what is in the records.\n\n" +
+      "LOG DATA:\n" + JSON.stringify(data);
+  }
+
+  function aiDescribe(name, inp){
+    const lines = [];
+    const add = (k, v) => { v = typeof v === "string" ? v.trim() : v; if(v) lines.push([k, String(v)]); };
+    if(name === "add_visit"){
+      add("Date", dateFmt(aiDate(inp.date)) || inp.date); add("Doctor", inp.doctor); add("Institution", inp.institution);
+      add("Type", inp.visit_type); add("Notes", inp.notes); add("Medications", inp.medications);
+      if(aiDate(inp.follow_up)) add("Follow-up", dateFmt(aiDate(inp.follow_up)));
+      if(inp.attach_file) add("Attachment", "your photo/file");
+      return {title: "New visit", lines};
+    }
+    if(name === "update_visit"){
+      const e = findEntry(inp.id);
+      if(!e) return {title: "Change a visit", lines: [["Problem", "I couldn't find that visit"]]};
+      lines.push(["Visit", (dateFmt(e.date) || "undated") + " — " + (e.doctor || "untitled")]);
+      add("New date", dateFmt(aiDate(inp.date))); add("Doctor", inp.doctor); add("Institution", inp.institution); add("Type", inp.visit_type);
+      add("Notes", inp.notes); add("Medications", inp.medications); add("Follow-up", dateFmt(aiDate(inp.follow_up)));
+      return {title: "Change visit", lines};
+    }
+    if(name === "add_medication"){
+      add("Name", inp.name); add("Dosage", inp.dosage); add("Frequency", inp.frequency);
+      add("Started", dateFmt(aiDate(inp.start_date))); add("Status", inp.status); add("Notes", inp.notes);
+      return {title: "New medication", lines};
+    }
+    if(name === "update_medication"){
+      const m = findMedication(inp.id);
+      if(!m) return {title: "Change a medication", lines: [["Problem", "I couldn't find that medication"]]};
+      lines.push(["Medication", m.name || "untitled"]);
+      add("Name", inp.name); add("Dosage", inp.dosage); add("Frequency", inp.frequency);
+      add("Started", dateFmt(aiDate(inp.start_date))); add("Status", inp.status); add("Notes", inp.notes);
+      return {title: "Change medication", lines};
+    }
+    return {title: name, lines: []};
+  }
+
+  async function aiApply(name, inp, ctx){
+    if(!log) throw new Error("Log isn't loaded yet");
+    if(name === "add_visit"){
+      const entry = {id: uid(), date: aiDate(inp.date) || todayStr(), doctor: aiStr(inp.doctor), institution: aiStr(inp.institution),
+        visitType: aiStr(inp.visit_type), notes: aiStr(inp.notes), medications: aiStr(inp.medications), followUp: aiDate(inp.follow_up), file: null};
+      log.entries = log.entries || [];
+      log.entries.push(entry);
+      let extra = "";
+      if(inp.attach_file && ctx.files && ctx.files[0]){
+        try{
+          const up = await uploadFile(ctx.files[0], entry.id);
+          if(up) entry.file = up; else extra = " (the file didn't upload — attach it by hand)";
+        }catch(e){ extra = " (the file didn't upload — attach it by hand)"; }
+      }
+      queueSave();
+      return "Added to your visits" + extra;
+    }
+    if(name === "update_visit"){
+      const e = findEntry(inp.id); if(!e) throw new Error("Visit not found");
+      const map = {date:"date", doctor:"doctor", institution:"institution", visit_type:"visitType", notes:"notes", medications:"medications", follow_up:"followUp"};
+      Object.keys(map).forEach(k => {
+        if(inp[k] == null) return;
+        e[map[k]] = (k === "date" || k === "follow_up") ? (aiDate(inp[k]) || e[map[k]]) : aiStr(inp[k]);
+      });
+      queueSave();
+      return "Visit updated";
+    }
+    if(name === "add_medication"){
+      const med = {id: uid(), name: aiStr(inp.name), dosage: aiStr(inp.dosage), frequency: aiStr(inp.frequency),
+        startDate: aiDate(inp.start_date) || todayStr(), status: inp.status === "discontinued" ? "discontinued" : "active", notes: aiStr(inp.notes), file: null};
+      log.medications = log.medications || [];
+      log.medications.push(med);
+      queueSave();
+      return "Added to your medications";
+    }
+    if(name === "update_medication"){
+      const m = findMedication(inp.id); if(!m) throw new Error("Medication not found");
+      ["name","dosage","frequency","notes"].forEach(k => { if(inp[k] != null) m[k] = aiStr(inp[k]); });
+      if(inp.start_date != null) m.startDate = aiDate(inp.start_date) || m.startDate;
+      if(inp.status === "active" || inp.status === "discontinued") m.status = inp.status;
+      queueSave();
+      return "Medication updated";
+    }
+    throw new Error("Unknown action");
+  }
+
+  function setupAI(){
+    if(!window.AIBar) return;
+    AIBar.init({
+      appName: "Medical Log",
+      placeholder: "Ask, or attach a photo…",
+      intro: "Ask about your records, or add to them. Attach a photo or PDF of a visit report and I'll read it and propose an entry for you to confirm.",
+      examples: [
+        "How many times have I been to the dentist in the last year?",
+        "List my active medications",
+        "When is my next follow-up?"
+      ],
+      tools: AI_TOOLS,
+      isReady: () => !!log,
+      systemPrompt: aiSystemPrompt,
+      describe: aiDescribe,
+      apply: aiApply
+    });
+  }
+
   /* ---------- boot ---------- */
   document.addEventListener("DOMContentLoaded", () => {
     setupResync();
+    setupAI();
     const saved = localStorage.getItem(PASS_KEY);
     if(saved) openLog(saved);
     else renderSetup();
