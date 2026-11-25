@@ -60,6 +60,21 @@
   .block .addbtn{width:28px;height:22px;line-height:22px;font-size:16px}
   .block .empty{padding:8px 2px;font-size:13px}
   .block .row{padding:9px 2px}
+  /* hourly slots: one live text field per hour */
+  .slot{display:flex;align-items:center;gap:10px;margin-top:0;padding:1px 0;border-bottom:1px dashed var(--hair)}
+  .slot:focus-within{border-bottom-color:var(--ink)}
+  .slotlabel{flex:0 0 44px;font-size:11px;font-weight:800;letter-spacing:.1em;color:var(--gray)}
+  .slotbox{flex:0 0 21px;width:21px;height:21px;border:1.6px solid var(--ink);border-radius:3px;visibility:hidden;
+    display:flex;align-items:center;justify-content:center;cursor:pointer;transition:background .12s}
+  .slot.has .slotbox{visibility:visible}
+  .slotbox svg{width:13px;height:13px;stroke:var(--paper);stroke-width:3;fill:none;
+    stroke-dasharray:20;stroke-dashoffset:20;transition:stroke-dashoffset .18s ease-out}
+  .slot.done .slotbox{background:var(--ink)}
+  .slot.done .slotbox svg{stroke-dashoffset:0}
+  .slotinput{flex:1 1 auto;min-width:0;display:block;padding:10px 2px;font-size:17px;line-height:1.29;border:none;outline:none;border-radius:0;
+    background:transparent;color:var(--ink);font-family:inherit;resize:none;overflow:hidden}
+  .slot.done .slotinput{color:var(--done);text-decoration:line-through;text-decoration-thickness:1.5px}
+  .slotcarry{flex:0 0 auto;min-width:0;font-size:11px;letter-spacing:2px;color:var(--gray)}
   /* asset groups */
   .group{margin-top:12px}
   .grouphead{display:flex;align-items:center;justify-content:space-between;padding-bottom:3px;border-bottom:1px dashed var(--gray)}
@@ -171,9 +186,7 @@
     </div>
     <div class="body">
       <div class="sec" id="cashSec">
-        <div class="sechead"><div class="seclabel"><span>$</span>Cash Flow Focus</div>
-          <div><button class="editbtn" id="cashEdit">&#9998;</button></div>
-        </div>
+        <div class="sechead"><div class="seclabel"><span>$</span>Cash Flow Focus</div></div>
         <div id="blocks"></div>
       </div>
       <div class="sec" data-sec="todos">
@@ -274,7 +287,34 @@
 
 <script>
 (function(){
-  const BLOCKS = ["8\u201310","10\u201312","12\u20132","2\u20134","4\u20136"];
+  // one live text field per hour, 8am-6pm
+  const BLOCKS = ["8\u20139","9\u201310","10\u201311","11\u201312","12\u20131","1\u20132","2\u20133","3\u20134","4\u20135","5\u20136"];
+  // the old two-hour blocks, and the two hours each one is split into
+  const OLD_BLOCKS = {"8\u201310":["8\u20139","9\u201310"], "10\u201312":["10\u201311","11\u201312"], "12\u20132":["12\u20131","1\u20132"], "2\u20134":["2\u20133","3\u20134"], "4\u20136":["4\u20135","5\u20136"]};
+  function mergeInto(a, b){
+    a.text = (a.text || "") + "; " + (b.text || "");
+    a.done = !!(a.done && b.done);
+    a.carry = Math.max(a.carry || 0, b.carry || 0);
+  }
+  // Moves items out of the old two-hour blocks into hourly slots, and keeps each slot to one item.
+  function migrateBlocks(st){
+    st.blocks = st.blocks || {};
+    Object.keys(OLD_BLOCKS).forEach(old => {
+      const items = st.blocks[old];
+      if(!items) return;
+      delete st.blocks[old];
+      items.forEach((it, i) => {
+        const target = OLD_BLOCKS[old][Math.min(i, 1)];
+        const cur = st.blocks[target] = st.blocks[target] || [];
+        if(!cur.length) cur.push(it); else mergeInto(cur[0], it);
+      });
+    });
+    BLOCKS.forEach(b => {
+      const arr = st.blocks[b] = st.blocks[b] || [];
+      while(arr.length > 1) mergeInto(arr[0], arr.pop());
+    });
+    return st;
+  }
   const SECTIONS = ["todos","ideas","calls"];
   const KEY = "focus-app-state";
   let state = {
@@ -310,8 +350,7 @@
           saved.blocks[BLOCKS[0]] = saved.blocks[BLOCKS[0]].concat(saved.items.money);
           delete saved.items.money;
         }
-        saved.blocks = saved.blocks || {};
-        BLOCKS.forEach(b => saved.blocks[b] = saved.blocks[b] || []);
+        migrateBlocks(saved);
         saved.assetGroups = saved.assetGroups || [];
         if(saved.items && saved.items.assets && saved.items.assets.length){
           saved.assetGroups.push({id:uid(), name:"General", items: saved.items.assets});
@@ -354,19 +393,32 @@
       '<button class="delbtn" data-del="'+it.id+'">&#10005;</button>'+
     '</div>';
   }
+  function escAttr(s){ return esc(s).replace(/"/g, "&quot;"); }
+  function slotHTML(b){
+    const it = state.blocks[b][0];
+    return '<div class="block slot'+(it?" has":"")+(it && it.done?" done":"")+'" data-block="'+b+'">'+
+      '<div class="slotlabel">'+b+'</div>'+
+      '<div class="slotbox">'+CHECK+'</div>'+
+      '<textarea class="slotinput" rows="1" data-slot="'+b+'" '+
+        'enterkeyhint="done" autocomplete="off" aria-label="'+b+'">'+(it ? esc(it.text) : "")+'</textarea>'+
+      '<div class="slotcarry">'+(it && it.carry ? "\u25CF".repeat(Math.min(it.carry,3)) : "")+'</div>'+
+    '</div>';
+  }
+  function growSlot(el){ el.style.height = "auto"; el.style.height = el.scrollHeight + "px"; }
   function renderBlocks(){
     const host = document.getElementById("blocks");
-    host.innerHTML = BLOCKS.map(b =>
-      '<div class="block" data-block="'+b+'">'+
-        '<div class="blockhead"><div class="blocklabel">'+b+'</div>'+
-        '<button class="addbtn" data-baddbtn="'+b+'">+</button></div>'+
-        '<input class="newinput" data-binput="'+b+'" placeholder="Cash flow item for '+b+'&hellip;" enterkeyhint="done">'+
-        '<div class="blist">'+
-          (state.blocks[b].length ? state.blocks[b].map(rowHTML).join("") : '<div class="empty">&mdash;</div>')+
-        '</div>'+
-      '</div>'
-    ).join("");
-    wireBlocks();
+    // keep the cursor where it was if a re-render happens while you're typing
+    const ae = document.activeElement;
+    let focusB = null, ss = 0, se = 0;
+    if(ae && ae.classList && ae.classList.contains("slotinput") && host.contains(ae)){
+      focusB = ae.dataset.slot; ss = ae.selectionStart; se = ae.selectionEnd;
+    }
+    host.innerHTML = BLOCKS.map(slotHTML).join("");
+    host.querySelectorAll(".slotinput").forEach(growSlot);
+    if(focusB){
+      const n = host.querySelector('[data-slot="'+focusB+'"]');
+      if(n){ n.focus(); try{ n.setSelectionRange(ss, se); }catch(e){} }
+    }
   }
   function renderAssets(){
     const host = document.getElementById("assetGroups");
@@ -448,47 +500,44 @@
   }
 
   /* ---------- cash flow blocks ---------- */
-  document.getElementById("cashEdit").addEventListener("click", () => {
-    document.getElementById("cashSec").classList.toggle("editing");
-  });
-  function wireBlocks(){
-    document.querySelectorAll("[data-baddbtn]").forEach(btn => {
-      btn.addEventListener("click", () => {
-        const inp = document.querySelector('[data-binput="'+btn.dataset.baddbtn+'"]');
-        inp.classList.add("show"); inp.focus();
-      });
-    });
-    document.querySelectorAll("[data-binput]").forEach(inp => {
-      const b = inp.dataset.binput;
-      function commit(){
-        const v = inp.value.trim();
-        if(v){
-          state.blocks[b].push({id:uid(), text:v, done:false, carry:0});
-          renderBlocks(); renderStats(); save();
-          return;
-        }
-        inp.value=""; inp.classList.remove("show");
+  window.addEventListener("resize", () => document.querySelectorAll(".slotinput").forEach(growSlot));
+  // Each hour is one live text field: typing creates/updates the item, clearing it removes it.
+  (function(){
+    const host = document.getElementById("blocks");
+    host.addEventListener("input", e => {
+      const inp = e.target.closest(".slotinput"); if(!inp) return;
+      const b = inp.dataset.slot, v = inp.value, row = inp.closest(".slot");
+      growSlot(inp);
+      let it = state.blocks[b][0];
+      if(v.trim()){
+        if(!it){ it = {id:uid(), text:v, done:false, carry:0}; state.blocks[b] = [it]; }
+        else it.text = v;
+      } else if(it){
+        state.blocks[b] = []; it = null;
+        row.querySelector(".slotcarry").textContent = "";
       }
-      inp.addEventListener("keydown", e => { if(e.key==="Enter"){ e.preventDefault(); commit(); } });
-      inp.addEventListener("blur", () => { const v=inp.value.trim(); if(v){commit();} else {inp.classList.remove("show");} });
+      row.classList.toggle("has", !!it);
+      row.classList.toggle("done", !!(it && it.done));
+      renderStats(); save();
     });
-    document.querySelectorAll(".block .blist").forEach(list => {
-      const b = list.closest(".block").dataset.block;
-      list.addEventListener("click", e => {
-        const del = e.target.closest("[data-del]");
-        if(del){
-          state.blocks[b] = state.blocks[b].filter(it => it.id !== del.dataset.del);
-          renderBlocks(); renderStats(); save();
-          document.getElementById("cashSec").classList.add("editing");
-          return;
-        }
-        const row = e.target.closest(".row");
-        if(!row || document.getElementById("cashSec").classList.contains("editing")) return;
-        const it = state.blocks[b].find(i => i.id === row.dataset.id);
-        if(it){ it.done = !it.done; renderBlocks(); renderStats(); save(); }
-      });
+    host.addEventListener("focusout", e => {
+      const inp = e.target.closest(".slotinput"); if(!inp) return;
+      const it = state.blocks[inp.dataset.slot][0];
+      if(it){ it.text = it.text.trim(); inp.value = it.text; growSlot(inp); save(); }
     });
-  }
+    host.addEventListener("keydown", e => {
+      if(e.key === "Enter" && e.target.classList.contains("slotinput")){ e.preventDefault(); e.target.blur(); }
+    });
+    host.addEventListener("click", e => {
+      const box = e.target.closest(".slotbox"); if(!box) return;
+      const row = box.closest(".slot");
+      const it = state.blocks[row.dataset.block][0];
+      if(!it) return;
+      it.done = !it.done;
+      row.classList.toggle("done", it.done);
+      renderStats(); save();
+    });
+  })();
 
   /* ---------- passive asset groups ---------- */
   document.getElementById("assetEdit").addEventListener("click", () => {
@@ -755,6 +804,7 @@
         const remoteAt = remote.updatedAt || 0;
         if(remoteAt >= (state.updatedAt||0)){
           state = Object.assign(state, remote.state, {updatedAt: remoteAt});
+          migrateBlocks(state);
           lastPulledAt = remoteAt;
           save(); renderAll();
           if(!silent) toast("Pulled data from your other device");
@@ -778,6 +828,7 @@
   function applyRemoteState(data){
     lastPulledAt = data.updatedAt;
     state = Object.assign(state, data.state, {updatedAt: data.updatedAt});
+    migrateBlocks(state);
     save(); renderAll();
     toast("Synced from other device");
   }
