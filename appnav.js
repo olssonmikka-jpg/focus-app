@@ -17,6 +17,7 @@
   var css =
     ".appnav{position:absolute;z-index:1000;top:calc(env(safe-area-inset-top,0px) + 12px);" +
       "right:calc(max(0px,(100vw - 640px)/2) + 20px);font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif}" +
+    ".appnav.wide{right:22px}" +
     ".appnav-btn{display:flex;align-items:center;justify-content:center;width:34px;height:26px;padding:0;" +
       "background:#FAFAF8;color:#141414;border:1.4px solid #141414;border-radius:6px;cursor:pointer}" +
     ".appnav-btn:active,.appnav.open .appnav-btn{background:#E3792F;color:#1D1D1B;border-color:#1D1D1B}" +
@@ -38,7 +39,7 @@
     document.head.appendChild(style);
 
     var wrap = document.createElement("div");
-    wrap.className = "appnav";
+    wrap.className = "appnav" + (current === "index.html" ? " wide" : "");  // Daily Focus is full-width, the others sit in a 640px column
     wrap.innerHTML =
       '<button class="appnav-btn" type="button" aria-label="Switch app" aria-haspopup="true" aria-expanded="false">' +
         '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>' +
