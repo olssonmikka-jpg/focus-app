@@ -61,6 +61,9 @@
   .block .empty{padding:8px 2px;font-size:13px}
   .block .row{padding:9px 2px}
   /* hourly slots: one live text field per hour */
+  .clearbtn{margin-left:10px;vertical-align:middle;font-family:inherit;font-size:10px;font-weight:800;letter-spacing:.1em;text-transform:uppercase;
+    color:var(--ink);background:none;border:1.2px solid var(--ink);border-radius:4px;padding:4px 8px;cursor:pointer}
+  .clearbtn:active{background:var(--ink);color:var(--paper)}
   .slot{display:flex;align-items:center;gap:10px;margin-top:0;padding:1px 0;border-bottom:1px dashed var(--hair)}
   .slot:focus-within{border-bottom-color:var(--ink)}
   .slotlabel{flex:0 0 44px;font-size:11px;font-weight:800;letter-spacing:.1em;color:var(--gray)}
@@ -182,7 +185,7 @@
   <section class="page" id="p0">
     <div class="phead">
       <div class="eyebrow" id="dateLabel"></div>
-      <div class="ptitle">Today <span class="streak">STREAK <b id="streak1">0</b>d</span></div>
+      <div class="ptitle"><span>Today <button class="clearbtn" id="clearHours" type="button">Clear hours</button></span> <span class="streak">STREAK <b id="streak1">0</b>d</span></div>
     </div>
     <div class="body">
       <div class="sec" id="cashSec">
@@ -501,6 +504,15 @@
 
   /* ---------- cash flow blocks ---------- */
   window.addEventListener("resize", () => document.querySelectorAll(".slotinput").forEach(growSlot));
+  // "Clear hours" empties every hour field and leaves the to-dos, calls, ideas and asset lists alone
+  document.getElementById("clearHours").addEventListener("click", () => {
+    const filled = BLOCKS.filter(b => state.blocks[b].length).length;
+    if(!filled){ toast("The hours are already clear"); return; }
+    if(!confirm("Clear all "+filled+" hour field"+(filled===1?"":"s")+"? Your to-dos stay.")) return;
+    BLOCKS.forEach(b => state.blocks[b] = []);
+    renderBlocks(); renderStats(); save();
+    toast("Hours cleared");
+  });
   // Each hour is one live text field: typing creates/updates the item, clearing it removes it.
   (function(){
     const host = document.getElementById("blocks");
