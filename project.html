@@ -390,11 +390,63 @@
   let lastLocalWriteAt = 0;
   const CLIENT_ID = uid();   // identifies this tab so we can ignore our own saves echoing back
   let dirty = false;         // local edits not yet confirmed saved
+  let base = null;           // the last version we saw on the server; lets a save tell "I changed it" from "someone else did"
+  let forceReplace = false;  // set by "Restore from backup" so it overwrites on purpose
   let saveTimer = null;
   const expanded = new Set();
   let activeTab = "projects";
   let taskFilter = "open";
   let costFilter = "labor";
+
+
+  /* ---------- merge safety ----------
+     The whole project is one document, so a device holding an old copy used to
+     overwrite entries added elsewhere. Saves now compare against the last server
+     version this device saw (base) and, if the server moved on, merge item by item. */
+  function clone(o){ return o == null ? o : JSON.parse(JSON.stringify(o)); }
+  function isObj(x){ return x && typeof x === "object" && !Array.isArray(x); }
+  function isIdArray(x){ return Array.isArray(x) && x.every(i => isObj(i) && i.id); }
+  function deepEq(a, b){
+    if(a === b) return true;
+    if(a == null || b == null || typeof a !== "object" || typeof b !== "object") return false;
+    if(Array.isArray(a) !== Array.isArray(b)) return false;
+    if(Array.isArray(a)) return a.length === b.length && a.every((x, i) => deepEq(x, b[i]));
+    const ka = Object.keys(a).filter(k => a[k] !== undefined), kb = Object.keys(b).filter(k => b[k] !== undefined);
+    return ka.length === kb.length && ka.every(k => deepEq(a[k], b[k]));
+  }
+  // base = what we last saw, mine = my current copy, theirs = the server's copy
+  function merge3(base, mine, theirs){
+    if(deepEq(mine, base)) return clone(theirs);     // I didn't touch it: take theirs
+    if(deepEq(theirs, base)) return clone(mine);     // they didn't touch it: keep mine
+    if(deepEq(mine, theirs)) return clone(mine);
+    if(isIdArray(mine) && isIdArray(theirs) && (base == null || isIdArray(base))){
+      const b = new Map((base || []).map(i => [i.id, i])), t = new Map(theirs.map(i => [i.id, i]));
+      const out = [], seen = new Set();
+      mine.forEach(mi => {
+        seen.add(mi.id);
+        const bi = b.get(mi.id), ti = t.get(mi.id);
+        if(ti) out.push(merge3(bi, mi, ti));
+        else if(bi){ if(!deepEq(mi, bi)) out.push(clone(mi)); }   // they deleted it; keep only if I edited it
+        else out.push(clone(mi));                                  // I added it
+      });
+      theirs.forEach(ti => {
+        if(seen.has(ti.id)) return;
+        const bi = b.get(ti.id);
+        if(!bi) out.push(clone(ti));                               // they added it
+        else if(!deepEq(ti, bi)) out.push(clone(ti));              // I deleted it but they edited it: keep
+      });
+      return out;
+    }
+    if(isObj(mine) && isObj(theirs) && (base == null || isObj(base))){
+      const out = {};
+      new Set([...Object.keys(mine), ...Object.keys(theirs)]).forEach(k => {
+        const v = merge3(base ? base[k] : undefined, mine[k], theirs[k]);
+        if(v !== undefined) out[k] = v;
+      });
+      return out;
+    }
+    return clone(mine);                                            // same value edited on both: mine wins
+  }
 
   function emptyProject(name, client){
     return { name: name||"Untitled Project", client: client||"", jobs: [], payments: [], notes: [], updatedAt: Date.now() };
@@ -462,8 +514,38 @@
     const ok = await ensureFirebase();
     if(!ok) { toast("Can't reach sync — check connection"); return; }
     const savedAt = project.updatedAt;
-    try{ await projRef(projectId).set(project); if(project.updatedAt === savedAt) dirty = false; }
-    catch(e){ toast("Save failed — will retry"); setTimeout(doSave, 3000); }
+    const mine = clone(project);
+    const replace = forceReplace; forceReplace = false;
+    try{
+      const ref = projRef(projectId);
+      const res = await firebase.firestore().runTransaction(async tx => {
+        const snap = await tx.get(ref);
+        const server = snap.exists ? snap.data() : null;
+        if(replace || !server || !base || (server.updatedAt || 0) === (base.updatedAt || 0)){
+          tx.set(ref, mine); return { out: mine, merged: false };
+        }
+        // The server changed since this device last saw it (another device saved): merge, don't overwrite.
+        const out = merge3(base, mine, server);
+        out.jobs = out.jobs || []; out.payments = out.payments || []; out.notes = out.notes || [];
+        out.updatedAt = Math.max(Date.now(), (server.updatedAt || 0) + 1, mine.updatedAt || 0);
+        out.writer = CLIENT_ID;
+        tx.set(ref, out); return { out, merged: true };
+      });
+      base = clone(res.out);
+      if(project.updatedAt === savedAt){
+        if(res.merged){
+          project = res.out; lastLocalWriteAt = project.updatedAt;
+          renderAll(); toast("Merged changes from another device");
+        }
+        dirty = false;
+      } else if(res.merged){
+        // I kept editing while this saved: fold the other device's changes into those newer edits.
+        const m = merge3(mine, project, res.out);
+        m.jobs = m.jobs || []; m.payments = m.payments || []; m.notes = m.notes || [];
+        m.updatedAt = project.updatedAt; m.writer = CLIENT_ID;
+        project = m; renderAll(); toast("Merged changes from another device");
+      }
+    }catch(e){ if(replace) forceReplace = true; toast("Save failed — will retry"); setTimeout(doSave, 3000); }
   }
 
   async function openProject(id){
@@ -475,6 +557,7 @@
       project = snap.data();
       project.jobs = project.jobs || [];
       project.payments = project.payments || [];
+      base = clone(project);
       lastLocalWriteAt = project.updatedAt || 0;
       if(!isView){ saveRecent(id, project.name, project.client, "edit"); pushIndexEntry(id, project.name, project.client); }
       renderAll();
@@ -490,6 +573,7 @@
     if(d.writer === CLIENT_ID) return;
     if((d.updatedAt||0) === (project.updatedAt||0)) return;
     project = d; project.jobs = project.jobs || []; project.payments = project.payments || [];
+    base = clone(project);
     lastLocalWriteAt = d.updatedAt || 0;
     renderAll();
   }
@@ -1106,7 +1190,7 @@
         const when = obj.exportedAt ? new Date(obj.exportedAt).toLocaleDateString() : "unknown date";
         if(!confirm('Replace this project with the backup of "'+(obj.project.name||"Untitled")+'" from '+when+'? This can\'t be undone.')) return;
         project = obj.project; project.jobs = project.jobs || []; project.payments = project.payments || [];
-        expanded.clear(); queueSave(); toast("Backup restored");
+        expanded.clear(); forceReplace = true; queueSave(); toast("Backup restored");
       });
       const pName = document.getElementById("pName");
       pName.addEventListener("change", () => { project.name = pName.value.trim()||"Untitled Project"; saveRecent(projectId, project.name, project.client, "edit"); pushIndexEntry(projectId, project.name, project.client); queueSave(); });
